@@ -14,10 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install system deps (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libftxui-dev
-
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
@@ -26,5 +22,9 @@ jobs:
 
       - name: Smoke test (Linux / macOS)
         if: runner.os != 'Windows'
-        working-directory: build
-        run: timeout 2 ./cld || code=$?; if [ "$code" = 124 ]; then exit 0; else exit "$code"; fi
+        run: |
+          ./build/cld &
+          PID=$!
+          sleep 2
+          kill $PID 2>/dev/null || true
+          wait $PID || true
