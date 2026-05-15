@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 env:
-  BIN_NAME: cld
+  BIN: cld
 
 jobs:
   build:
@@ -31,20 +31,31 @@ jobs:
       - name: Smoke test (Linux / macOS)
         if: runner.os != 'Windows'
         run: |
-          ./build/cld &
+          ./build/${{ env.BIN }} &
           PID=$!
           sleep 2
           kill $PID 2>/dev/null || true
           wait $PID || true
 
+      - name: Stage binary for upload
+        shell: bash
+        run: |
+          mkdir -p upload
+          if [ -f "build/${{ env.BIN }}" ]; then
+            cp "build/${{ env.BIN }}" "upload/${{ env.BIN }}"
+          elif [ -f "build/Release/${{ env.BIN }}.exe" ]; then
+            cp "build/Release/${{ env.BIN }}.exe" "upload/${{ env.BIN }}.exe"
+          elif [ -f "build/${{ env.BIN }}.exe" ]; then
+            cp "build/${{ env.BIN }}.exe" "upload/${{ env.BIN }}.exe"
+          else
+            echo "Binary not found!" && exit 1
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.BIN_NAME }}-${{ runner.os }}
-          path: |
-            build/${{ env.BIN_NAME }}
-            build/Release/${{ env.BIN_NAME }}.exe
-          if-no-files-found: warn
+          name: ${{ env.BIN }}-${{ runner.os }}
+          path: upload/
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -56,20 +67,21 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: ${{ env.BIN_NAME }}-*
+          pattern: ${{ env.BIN }}-*
 
-      - name: Rename binaries for release
+      - name: Rename for release
         run: |
-          mv ${{ env.BIN_NAME }}-Linux/${{ env.BIN_NAME }}       ${{ env.BIN_NAME }}-linux      2>/dev/null || true
-          mv ${{ env.BIN_NAME }}-macOS/${{ env.BIN_NAME }}       ${{ env.BIN_NAME }}-macos      2>/dev/null || true
-          mv ${{ env.BIN_NAME }}-Windows/${{ env.BIN_NAME }}.exe ${{ env.BIN_NAME }}-win.exe    2>/dev/null || true
-          chmod +x ${{ env.BIN_NAME }}-linux ${{ env.BIN_NAME }}-macos 2>/dev/null || true
+          TAG="${{ github.ref_name }}"
+          mv ${{ env.BIN }}-Linux/${{ env.BIN }}    "${TAG}-linux"    2>/dev/null || true
+          mv ${{ env.BIN }}-macOS/${{ env.BIN }}    "${TAG}-macos"    2>/dev/null || true
+          mv ${{ env.BIN }}-Windows/${{ env.BIN }}.exe "${TAG}-win.exe" 2>/dev/null || true
+          chmod +x "${TAG}-linux" "${TAG}-macos" 2>/dev/null || true
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            cld-linux
-            cld-macos
-            cld-win.exe
+            ${{ github.ref_name }}-linux
+            ${{ github.ref_name }}-macos
+            ${{ github.ref_name }}-win.exe
           generate_release_notes: true
