@@ -6,6 +6,28 @@
 
 Dock::Dock() {}
 
+ftxui::Color Dock::parseHex(const std::string& hex, ftxui::Color fallback) {
+  std::string h = hex;
+  if (!h.empty() && h[0] == '#') h = h.substr(1);
+  if (h.size() >= 6) {
+    try {
+      auto r = std::stoi(h.substr(0, 2), nullptr, 16);
+      auto g = std::stoi(h.substr(2, 2), nullptr, 16);
+      auto b = std::stoi(h.substr(4, 2), nullptr, 16);
+      return ftxui::Color::RGB(r, g, b);
+    } catch (...) {}
+  }
+  return fallback;
+}
+
+void Dock::setBackgroundColor(const std::string& hex) {
+  bgColor_ = parseHex(hex, bgColor_);
+}
+
+void Dock::setTextColor(const std::string& hex) {
+  textColor_ = parseHex(hex, textColor_);
+}
+
 void Dock::removeApp(const std::string& name) {
   apps_.erase(
     std::remove_if(apps_.begin(), apps_.end(),
@@ -16,8 +38,6 @@ void Dock::removeApp(const std::string& name) {
 void Dock::draw(ftxui::Canvas& canvas) {
   if (!visible_) return;
 
-  auto bg = ftxui::Color::RGB(22, 33, 62);
-  auto textColor = ftxui::Color::RGB(224, 224, 224);
   auto accentColor = ftxui::Color::RGB(233, 69, 96);
   auto runningColor = ftxui::Color::RGB(0, 255, 128);
 
@@ -27,21 +47,21 @@ void Dock::draw(ftxui::Canvas& canvas) {
   int dockY = screenH - height_;
   setPos(0, dockY, screenW, height_);
 
-  canvas::fill(canvas, 0, dockY, screenW, height_, bg);
+  canvas::fill(canvas, 0, dockY, screenW, height_, bgColor_);
 
   if (flash_ > 0) {
-    canvas::write(canvas, 1, dockY, " [Start] ", bg, accentColor);
+    canvas::write(canvas, 1, dockY, " [Start] ", bgColor_, accentColor);
     flash_--;
   } else {
-    canvas::write(canvas, 1, dockY, " [Start] ", accentColor, bg);
+    canvas::write(canvas, 1, dockY, " [Start] ", accentColor, bgColor_);
   }
-  canvas::write(canvas, 11, dockY, "\u2502", textColor, bg);
+  canvas::write(canvas, 11, dockY, "\u2502", textColor_, bgColor_);
 
   int x = 14;
   for (const auto& app : apps_) {
     if (x + (int)app.name.size() + 3 >= screenW) break;
-    auto fg = app.is_running ? runningColor : textColor;
-    canvas::write(canvas, x, dockY, " " + app.name + " ", fg, bg);
+    auto fg = app.is_running ? runningColor : textColor_;
+    canvas::write(canvas, x, dockY, " " + app.name + " ", fg, bgColor_);
     x += app.name.size() + 3;
   }
 
@@ -52,7 +72,7 @@ void Dock::draw(ftxui::Canvas& canvas) {
 
   if (screenW > 20) {
     canvas::write(canvas, screenW - 6, dockY, std::string(" ") + timeBuf + " ",
-      textColor, bg);
+      textColor_, bgColor_);
   }
 }
 
@@ -75,9 +95,8 @@ bool Dock::handleEvent(ftxui::Event event) {
         int appX = 14;
         for (int j = 0; j < i; ++j)
           appX += apps_[j].name.size() + 3;
-        if (mouse.x >= appX && mouse.x < appX + (int)apps_[i].name.size() + 2) {
+        if (mouse.x >= appX && mouse.x < appX + (int)apps_[i].name.size() + 2)
           return true;
-        }
       }
     }
   }

@@ -17,13 +17,16 @@ void StartMenu::updateFilter() {
     for (const auto& app : apps_) {
       std::string nameLower = app.name;
       std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
-      if (nameLower.find(lower) != std::string::npos) {
+      if (nameLower.find(lower) != std::string::npos)
         filteredApps_.push_back(app);
-      }
     }
   }
-  if (selected_idx_ >= (int)filteredApps_.size())
-    selected_idx_ = std::max(0, (int)filteredApps_.size() - 1);
+  if (selected_idx_ >= totalEntries())
+    selected_idx_ = std::max(0, totalEntries() - 1);
+}
+
+int StartMenu::totalEntries() const {
+  return (int)filteredApps_.size() + SPECIAL_ENTRIES;
 }
 
 std::string StartMenu::selectedCommand() const {
@@ -43,7 +46,8 @@ int StartMenu::hitTest(int mx, int my) const {
   if (mx < menuX_ || mx >= menuX_ + menuW_) return -1;
   if (my < menuY_ || my >= menuY_ + menuH_) return -1;
   int itemY = menuY_ + 3;
-  for (int i = 0; i < (int)filteredApps_.size(); ++i) {
+  int total = totalEntries();
+  for (int i = 0; i < total; ++i) {
     if (my == itemY) return i;
     itemY++;
   }
@@ -53,8 +57,9 @@ int StartMenu::hitTest(int mx, int my) const {
 void StartMenu::draw(ftxui::Canvas& canvas) {
   if (!open_ || !visible_) return;
 
+  int total = totalEntries();
   menuW_ = std::min(width_, 35);
-  int maxItems = std::min((int)filteredApps_.size() + 2, 22);
+  int maxItems = std::min(total + 2, 22);
   menuH_ = maxItems + 3;
   menuX_ = 0;
   menuY_ = std::max(0, (int)(canvas.height() / 4) - menuH_ - 3);
@@ -63,6 +68,7 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
   auto borderColor = ftxui::Color::RGB(233, 69, 96);
   auto textColor = ftxui::Color::RGB(224, 224, 224);
   auto selectedBg = ftxui::Color::RGB(233, 69, 96);
+  auto specialColor = ftxui::Color::RGB(255, 200, 50);
 
   canvas::fill(canvas, menuX_, menuY_, menuW_, menuH_, bg);
 
@@ -84,7 +90,10 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
   canvas::write(canvas, menuX_ + 10, menuY_ + 1, displaySearch, textColor, bg);
 
   int itemY = menuY_ + 3;
-  for (int i = 0; i < (int)filteredApps_.size() && itemY < menuY_ + menuH_ - 1; ++i) {
+  int visItems = maxItems;
+  int shown = 0;
+
+  for (int i = 0; i < (int)filteredApps_.size() && shown < visItems; ++i, ++shown) {
     auto& app = filteredApps_[i];
     auto fg = textColor;
     auto itemBg = bg;
@@ -97,6 +106,30 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
       label = label.substr(0, menuW_ - 7) + "...";
     canvas::write(canvas, menuX_ + 2, itemY, label, fg, itemBg);
     itemY++;
+  }
+
+  if (shown < visItems && !filteredApps_.empty()) {
+    for (int i = 0; i < menuW_ - 2; ++i)
+      canvas::write(canvas, menuX_ + 1 + i, itemY, "\u2500",
+        ftxui::Color::RGB(100, 100, 100), bg);
+    itemY++;
+    shown++;
+  }
+
+  if (shown < visItems) {
+    int editIdx = (int)filteredApps_.size() + ENTRY_EDIT_CONFIG;
+    auto fg = (editIdx == selected_idx_) ? ftxui::Color::RGB(255, 255, 255) : specialColor;
+    auto itemBg = (editIdx == selected_idx_) ? selectedBg : bg;
+    canvas::write(canvas, menuX_ + 2, itemY, "Edit Config", fg, itemBg);
+    itemY++; shown++;
+  }
+
+  if (shown < visItems) {
+    int exitIdx = (int)filteredApps_.size() + ENTRY_EXIT;
+    auto fg = (exitIdx == selected_idx_) ? ftxui::Color::RGB(255, 255, 255) : specialColor;
+    auto itemBg = (exitIdx == selected_idx_) ? selectedBg : bg;
+    canvas::write(canvas, menuX_ + 2, itemY, "Exit", fg, itemBg);
+    itemY++; shown++;
   }
 
   canvas::write(canvas, menuX_ + 2, menuY_ + menuH_ - 1,
@@ -119,13 +152,22 @@ bool StartMenu::handleEvent(ftxui::Event event) {
   }
 
   if (event == ftxui::Event::ArrowDown) {
-    if (selected_idx_ < (int)filteredApps_.size() - 1) selected_idx_++;
+    if (selected_idx_ < totalEntries() - 1) selected_idx_++;
     return true;
   }
 
   if (event == ftxui::Event::Return) {
     open_ = false;
-    if (onLaunch) onLaunch();
+    int appCount = (int)filteredApps_.size();
+    if (selected_idx_ < appCount) {
+      if (onLaunch) onLaunch();
+    } else {
+      int special = selected_idx_ - appCount;
+      if (special == ENTRY_EDIT_CONFIG && onConfigClick)
+        onConfigClick();
+      else if (special == ENTRY_EXIT && onExitClick)
+        onExitClick();
+    }
     return true;
   }
 
@@ -144,12 +186,19 @@ bool StartMenu::handleEvent(ftxui::Event event) {
       if (hit >= 0) {
         selected_idx_ = hit;
         open_ = false;
-        if (onLaunch) onLaunch();
+        int appCount = (int)filteredApps_.size();
+        if (hit < appCount) {
+          if (onLaunch) onLaunch();
+        } else {
+          int special = hit - appCount;
+          if (special == ENTRY_EDIT_CONFIG && onConfigClick)
+            onConfigClick();
+          else if (special == ENTRY_EXIT && onExitClick)
+            onExitClick();
+        }
         return true;
       }
-      if (hit == -2) {
-        return true;
-      }
+      if (hit == -2) return true;
       if (hit == -1) {
         open_ = false;
         search_ = "";

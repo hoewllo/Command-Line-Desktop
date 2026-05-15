@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ftxui CONFIG QUIET)
 if(NOT ftxui_FOUND)
-  message(STATUS "FTXUI not found system-wide, fetching via FetchContent...")
   include(FetchContent)
   FetchContent_Declare(
     ftxui
@@ -25,3 +24,5 @@ target_link_libraries(cld PRIVATE
   ftxui::dom
   ftxui::component
 )
+
+install(TARGETS cld RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

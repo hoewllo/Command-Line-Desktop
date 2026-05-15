@@ -31,8 +31,5 @@ struct Config {
 class ConfigLoader {
 public:
   Config load(const std::string& path);
-
-private:
-  std::string trim(const std::string& s);
-  std::string stripQuotes(const std::string& s);
+  void save(const std::string& path, const Config& config);
 };

@@ -7,8 +7,10 @@
 int main() {
   auto desktop = std::make_shared<Desktop>();
 
+  const std::string configPath = "config.yaml";
+
   ConfigLoader configLoader;
-  auto config = configLoader.load("config.yaml");
+  auto config = configLoader.load(configPath);
 
   AppDetector detector;
   auto detectedApps = detector.scanAll();
@@ -21,6 +23,7 @@ int main() {
     if (!exists) config.apps.push_back(app);
   }
 
+  desktop->setConfigPath(configPath);
   desktop->loadConfig(config);
 
   auto screen = ftxui::ScreenInteractive::Fullscreen();

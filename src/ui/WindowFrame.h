@@ -1,6 +1,7 @@
 #pragma once
 #include "core/Component.h"
 #include <memory>
+#include <ftxui/screen/color.hpp>
 
 class WindowFrame : public Component {
 public:
@@ -20,10 +21,17 @@ public:
   void restore() { minimized_ = false; }
   bool isMinimized() const { return minimized_; }
 
+  void setBorderColor(const std::string& hex);
+  void setTitleColor(const std::string& hex);
+
 private:
   std::unique_ptr<Component> content_;
   bool closable_ = true;
   bool minimized_ = false;
+  ftxui::Color borderColor_{ftxui::Color::RGB(15, 52, 96)};
+  ftxui::Color titleColor_{ftxui::Color::RGB(233, 69, 96)};
 
   static constexpr int titlebar_height_ = 2;
+
+  ftxui::Color parseHex(const std::string& hex, ftxui::Color fallback);
 };
