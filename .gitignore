@@ -1,4 +1,6 @@
 build/
+nano.*.save
+*.save
 *.o
 *.swp
 *.swo
