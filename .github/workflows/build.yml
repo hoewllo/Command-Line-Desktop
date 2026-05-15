@@ -1,6 +1,14 @@
 name: build
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+env:
+  BIN_NAME: cld
 
 jobs:
   build:
@@ -28,3 +36,40 @@ jobs:
           sleep 2
           kill $PID 2>/dev/null || true
           wait $PID || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BIN_NAME }}-${{ runner.os }}
+          path: |
+            build/${{ env.BIN_NAME }}
+            build/Release/${{ env.BIN_NAME }}.exe
+          if-no-files-found: warn
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ env.BIN_NAME }}-*
+
+      - name: Rename binaries for release
+        run: |
+          mv ${{ env.BIN_NAME }}-Linux/${{ env.BIN_NAME }}       ${{ env.BIN_NAME }}-linux      2>/dev/null || true
+          mv ${{ env.BIN_NAME }}-macOS/${{ env.BIN_NAME }}       ${{ env.BIN_NAME }}-macos      2>/dev/null || true
+          mv ${{ env.BIN_NAME }}-Windows/${{ env.BIN_NAME }}.exe ${{ env.BIN_NAME }}-win.exe    2>/dev/null || true
+          chmod +x ${{ env.BIN_NAME }}-linux ${{ env.BIN_NAME }}-macos 2>/dev/null || true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cld-linux
+            cld-macos
+            cld-win.exe
+          generate_release_notes: true
