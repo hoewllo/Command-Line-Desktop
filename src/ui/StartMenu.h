@@ -3,6 +3,7 @@
 #include "config/ConfigLoader.h"
 #include <string>
 #include <vector>
+#include <functional>
 
 class StartMenu : public Component {
 public:
@@ -20,6 +21,8 @@ public:
   std::string selectedCommand() const;
   std::string selectedName() const;
 
+  std::function<void()> onLaunch;
+
 private:
   std::vector<AppConfig> apps_;
   std::vector<AppConfig> filteredApps_;
@@ -28,4 +31,6 @@ private:
   bool open_ = false;
 
   void updateFilter();
+  int hitTest(int mx, int my) const;
+  int menuX_ = 0, menuY_ = 0, menuW_ = 0, menuH_ = 0;
 };

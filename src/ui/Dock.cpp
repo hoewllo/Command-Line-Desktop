@@ -29,7 +29,12 @@ void Dock::draw(ftxui::Canvas& canvas) {
 
   canvas::fill(canvas, 0, dockY, screenW, height_, bg);
 
-  canvas::write(canvas, 1, dockY, " [Start] ", accentColor, bg);
+  if (flash_ > 0) {
+    canvas::write(canvas, 1, dockY, " [Start] ", bg, accentColor);
+    flash_--;
+  } else {
+    canvas::write(canvas, 1, dockY, " [Start] ", accentColor, bg);
+  }
   canvas::write(canvas, 11, dockY, "\u2502", textColor, bg);
 
   int x = 14;
@@ -62,6 +67,8 @@ bool Dock::handleEvent(ftxui::Event event) {
     if (mouse.y >= screenH - height_ && mouse.button == ftxui::Mouse::Left &&
         mouse.motion == ftxui::Mouse::Pressed) {
       if (mouse.x >= 1 && mouse.x <= 10) {
+        if (onStartClick) onStartClick();
+        flash_ = 2;
         return true;
       }
       for (int i = 0; i < (int)apps_.size(); ++i) {

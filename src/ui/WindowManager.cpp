@@ -155,8 +155,16 @@ bool WindowManager::handleEvent(ftxui::Event event) {
           win->focused_ = true;
           focused_idx_ = i;
 
+          bool onX = (mouse.y >= win->y_ && mouse.y < win->y_ + 2 &&
+                      mouse.x >= win->x_ + win->width_ - 4 &&
+                      mouse.x < win->x_ + win->width_);
+          if (onX) {
+            closeFocused();
+            return true;
+          }
+
           if (mouse.y >= win->y_ && mouse.y < win->y_ + 2 &&
-              mouse.x < win->x_ + win->width_ - 3) {
+              mouse.x < win->x_ + win->width_ - 4) {
             dragging_ = true;
             dragWindow_ = win;
             dragOffsetX_ = mouse.x - win->x_;

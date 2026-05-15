@@ -18,6 +18,16 @@ Desktop::Desktop() {
 
   dock_->setDockHeight(2);
   dock_->setWindowManager(wm_.get());
+
+  dock_->onStartClick = [this]() { menu_->toggle(); };
+
+  menu_->onLaunch = [this]() {
+    auto cmd = menu_->selectedCommand();
+    auto name = menu_->selectedName();
+    if (!name.empty()) {
+      launchApp(name, cmd);
+    }
+  };
 }
 
 void Desktop::loadConfig(const Config& config) {
@@ -91,19 +101,18 @@ bool Desktop::OnEvent(ftxui::Event event) {
     return true;
   }
 
+  if (event.input() == "\x1b" || event.input() == "\x1b[11~") {
+    wm_->closeFocused();
+    return true;
+  }
+
   if (menu_ && menu_->isOpen()) {
-    if (event == ftxui::Event::Return) {
-      auto cmd = menu_->selectedCommand();
-      auto name = menu_->selectedName();
-      if (!name.empty()) {
-        launchApp(name, cmd);
-      }
-      menu_->close();
-      return true;
-    }
     if (menu_->handleEvent(event))
       return true;
   }
+
+  if (dock_ && dock_->handleEvent(event))
+    return true;
 
   if (wm_ && wm_->handleEvent(event))
     return true;

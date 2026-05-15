@@ -3,28 +3,51 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
-#include <unistd.h>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 AppDetector::AppDetector() {}
 
 bool AppDetector::commandExists(const std::string& cmd) {
   if (cmd.empty()) return false;
-  std::string check = "command -v " + cmd + " >/dev/null 2>&1";
-  return (std::system(check.c_str()) == 0);
+  const char* path = std::getenv("PATH");
+  if (!path) return false;
+  std::string pathStr(path);
+#ifdef _WIN32
+  char sep = ';';
+#else
+  char sep = ':';
+#endif
+  std::stringstream ss(pathStr);
+  std::string dir;
+  while (std::getline(ss, dir, sep)) {
+    if (dir.empty()) continue;
+    fs::path full = fs::path(dir) / cmd;
+#ifdef _WIN32
+    std::string withExt = full.string() + ".exe";
+    if (fs::exists(withExt) && !fs::is_directory(withExt))
+      return true;
+    withExt = full.string() + ".com";
+    if (fs::exists(withExt) && !fs::is_directory(withExt))
+      return true;
+#else
+    if (fs::exists(full) && !fs::is_directory(full) &&
+        (fs::status(full).permissions() & fs::perms::owner_exec) != fs::perms::none)
+      return true;
+#endif
+  }
+  return false;
 }
 
 std::vector<AppConfig> AppDetector::scanPATH() {
   std::vector<AppConfig> apps;
-  const char* path = std::getenv("PATH");
-  if (!path) return apps;
-
-  std::string pathStr(path);
-  std::stringstream ss(pathStr);
-  std::string dir;
   std::vector<std::string> known = {
-    "xterm", "gnome-terminal", "konsole", "terminal", "firefox",
-    "chromium", "nautilus", "thunar", "pcmanfm", "nano", "vim",
-    "emacs", "htop", "btop", "calc", "bc"
+    "xterm", "gnome-terminal", "konsole", "terminal",
+    "firefox", "chromium", "nautilus", "thunar", "pcmanfm",
+    "nano", "vim", "emacs",
+    "htop", "btop", "calc", "bc",
+    "Terminal", "Finder", "Safari", "TextEdit",
   };
 
   for (const auto& cmd : known) {
@@ -39,7 +62,8 @@ std::vector<AppConfig> AppDetector::scanPATH() {
   return apps;
 }
 
-std::vector<AppConfig> AppDetector::scanDesktopFiles() {
+#ifdef __linux__
+static std::vector<AppConfig> scanDesktopFilesImpl() {
   std::vector<AppConfig> apps;
   const char* dirs[] = {
     "/usr/share/applications/",
@@ -48,22 +72,17 @@ std::vector<AppConfig> AppDetector::scanDesktopFiles() {
   };
 
   for (const char** dir = dirs; *dir; ++dir) {
-    std::string cmd = "ls " + std::string(*dir) + "*.desktop 2>/dev/null | head -50";
-    std::string result;
-    char buf[4096];
-    FILE* fp = popen(cmd.c_str(), "r");
-    if (!fp) continue;
-    while (fgets(buf, sizeof(buf), fp)) {
-      std::string filepath(buf);
-      filepath.erase(filepath.find_last_not_of("\n") + 1);
-      std::ifstream f(filepath);
+    if (!fs::is_directory(*dir)) continue;
+    for (const auto& entry : fs::directory_iterator(*dir)) {
+      auto path = entry.path();
+      if (path.extension() != ".desktop") continue;
+      std::ifstream f(path);
       std::string line;
       AppConfig app;
       bool no_display = false;
       while (std::getline(f, line)) {
-        if (line.find("Name=") == 0 && app.name.empty()) {
+        if (line.find("Name=") == 0 && app.name.empty())
           app.name = line.substr(5);
-        }
         if (line.find("Exec=") == 0 && app.command.empty()) {
           app.command = line.substr(5);
           auto space = app.command.find(' ');
@@ -80,9 +99,63 @@ std::vector<AppConfig> AppDetector::scanDesktopFiles() {
         apps.push_back(app);
       }
     }
-    pclose(fp);
+  }
+  return apps;
+}
+#endif
+
+#ifdef __APPLE__
+static std::vector<AppConfig> scanMacAppsImpl() {
+  std::vector<AppConfig> apps;
+  const char* appDirs[] = {
+    "/Applications/",
+    "/System/Applications/",
+    nullptr
+  };
+  const char* home = std::getenv("HOME");
+  std::string userApps;
+  if (home) {
+    userApps = std::string(home) + "/Applications/";
   }
 
+  for (const char** dir = appDirs; *dir; ++dir) {
+    if (!fs::is_directory(*dir)) continue;
+    for (const auto& entry : fs::directory_iterator(*dir)) {
+      auto path = entry.path();
+      if (path.extension() != ".app") continue;
+      AppConfig app;
+      app.name = path.stem().string();
+      app.command = "open -a \"" + app.name + "\"";
+      app.internal = false;
+      apps.push_back(app);
+    }
+  }
+
+  if (!userApps.empty() && fs::is_directory(userApps)) {
+    for (const auto& entry : fs::directory_iterator(userApps)) {
+      auto path = entry.path();
+      if (path.extension() != ".app") continue;
+      AppConfig app;
+      app.name = path.stem().string();
+      app.command = "open -a \"" + app.name + "\"";
+      app.internal = false;
+      apps.push_back(app);
+    }
+  }
+
+  return apps;
+}
+#endif
+
+std::vector<AppConfig> AppDetector::scanDesktopFiles() {
+  std::vector<AppConfig> apps;
+#ifdef __linux__
+  auto linuxApps = scanDesktopFilesImpl();
+  apps.insert(apps.end(), linuxApps.begin(), linuxApps.end());
+#elif __APPLE__
+  auto macApps = scanMacAppsImpl();
+  apps.insert(apps.end(), macApps.begin(), macApps.end());
+#endif
   return apps;
 }
 

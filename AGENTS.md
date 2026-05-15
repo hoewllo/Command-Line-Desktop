@@ -12,14 +12,16 @@ A terminal-based desktop environment simulator in C++.
 ## Setup & Build
 
 ```bash
-# Install dependency
+# Install dependency (optional — FetchContent fallback auto-downloads FTXUI)
 apt install libftxui-dev       # Debian/Ubuntu
 # or: brew install ftxui        # macOS
-# or: FetchContent in CMake     # other platforms
 
 cmake -B build && cmake --build build
 ./build/cld
 ```
+
+CMake tries `find_package(ftxui CONFIG)` first, then falls back to
+FetchContent. No system dep strictly required.
 
 ## Architecture
 
@@ -72,7 +74,8 @@ Mouse position comes from terminal SGR mouse tracking — works over SSH xterm-f
 ## Auto-Detection
 
 - **Linux**: parse `/usr/share/applications/*.desktop`
-- **All**: scan `$PATH` for common tools
+- **macOS**: scan `/Applications/*.app`, `~/Applications/*.app`
+- **All**: scan `$PATH` for common tools (works on Linux, macOS, Windows)
 - **User-defined**: `config.yaml` under `apps:` key
 
 ## Conventions

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <functional>
 
 class WindowManager;
 class StartMenu;
@@ -29,8 +30,11 @@ public:
   int dockHeight() const { return height_; }
   void setDockHeight(int h) { height_ = h; }
 
+  std::function<void()> onStartClick;
+
 private:
   std::vector<DockApp> apps_;
   WindowManager* wm_ = nullptr;
   int height_ = 2;
+  int flash_ = 0;
 };

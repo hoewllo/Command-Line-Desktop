@@ -4,6 +4,14 @@
 #include <cstring>
 #include <algorithm>
 
+#ifdef _WIN32
+#define POPEN _popen
+#define PCLOSE _pclose
+#else
+#define POPEN popen
+#define PCLOSE pclose
+#endif
+
 AppRunner::AppRunner(const std::string& command, const std::string& appName)
   : command_(command), name_(appName) {
 }
@@ -24,7 +32,11 @@ void AppRunner::stop() {
 }
 
 void AppRunner::readOutput() {
-  FILE* fp = popen(command_.c_str(), "r");
+#ifdef _WIN32
+  FILE* fp = POPEN(command_.c_str(), "r");
+#else
+  FILE* fp = POPEN(command_.c_str(), "r");
+#endif
   if (!fp) {
     output_lines_.push_back("Failed to run: " + command_);
     running_ = false;
@@ -45,7 +57,7 @@ void AppRunner::readOutput() {
       partial.erase(0, pos + 1);
     }
   }
-  pclose(fp);
+  PCLOSE(fp);
   running_ = false;
 }
 

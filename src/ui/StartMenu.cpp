@@ -38,39 +38,53 @@ std::string StartMenu::selectedName() const {
   return "";
 }
 
+int StartMenu::hitTest(int mx, int my) const {
+  if (!open_) return -1;
+  if (mx < menuX_ || mx >= menuX_ + menuW_) return -1;
+  if (my < menuY_ || my >= menuY_ + menuH_) return -1;
+  int itemY = menuY_ + 3;
+  for (int i = 0; i < (int)filteredApps_.size(); ++i) {
+    if (my == itemY) return i;
+    itemY++;
+  }
+  return -2;
+}
+
 void StartMenu::draw(ftxui::Canvas& canvas) {
   if (!open_ || !visible_) return;
 
-  int menuW = std::min(width_, 35);
+  menuW_ = std::min(width_, 35);
   int maxItems = std::min((int)filteredApps_.size() + 2, 22);
-  int menuH = maxItems + 3;
+  menuH_ = maxItems + 3;
+  menuX_ = 0;
+  menuY_ = std::max(0, (int)(canvas.height() / 4) - menuH_ - 3);
 
   auto bg = ftxui::Color::RGB(30, 30, 50);
   auto borderColor = ftxui::Color::RGB(233, 69, 96);
   auto textColor = ftxui::Color::RGB(224, 224, 224);
   auto selectedBg = ftxui::Color::RGB(233, 69, 96);
 
-  canvas::fill(canvas, 0, y_, menuW, menuH, bg);
+  canvas::fill(canvas, menuX_, menuY_, menuW_, menuH_, bg);
 
-  for (int cx = 0; cx < menuW; ++cx) {
-    canvas::write(canvas, cx, y_, "\u2500", borderColor, borderColor);
-    canvas::write(canvas, cx, y_ + menuH - 1, "\u2500", borderColor, borderColor);
+  for (int cx = menuX_; cx < menuX_ + menuW_; ++cx) {
+    canvas::write(canvas, cx, menuY_, "\u2500", borderColor, borderColor);
+    canvas::write(canvas, cx, menuY_ + menuH_ - 1, "\u2500", borderColor, borderColor);
   }
-  for (int cy = y_; cy < y_ + menuH; ++cy) {
-    canvas::write(canvas, 0, cy, "\u2502", borderColor,
-      cy == y_ ? borderColor : bg);
-    canvas::write(canvas, menuW - 1, cy, "\u2502", borderColor,
-      cy == y_ ? borderColor : bg);
+  for (int cy = menuY_; cy < menuY_ + menuH_; ++cy) {
+    canvas::write(canvas, menuX_, cy, "\u2502", borderColor,
+      cy == menuY_ ? borderColor : bg);
+    canvas::write(canvas, menuX_ + menuW_ - 1, cy, "\u2502", borderColor,
+      cy == menuY_ ? borderColor : bg);
   }
 
-  canvas::write(canvas, 2, y_ + 1, "Search: ", borderColor, bg);
+  canvas::write(canvas, menuX_ + 2, menuY_ + 1, "Search: ", borderColor, bg);
   std::string displaySearch = search_;
-  if ((int)displaySearch.size() > menuW - 12)
-    displaySearch = displaySearch.substr(0, menuW - 15) + "...";
-  canvas::write(canvas, 10, y_ + 1, displaySearch, textColor, bg);
+  if ((int)displaySearch.size() > menuW_ - 12)
+    displaySearch = displaySearch.substr(0, menuW_ - 15) + "...";
+  canvas::write(canvas, menuX_ + 10, menuY_ + 1, displaySearch, textColor, bg);
 
-  int itemY = y_ + 3;
-  for (int i = 0; i < (int)filteredApps_.size() && itemY < y_ + menuH - 1; ++i) {
+  int itemY = menuY_ + 3;
+  for (int i = 0; i < (int)filteredApps_.size() && itemY < menuY_ + menuH_ - 1; ++i) {
     auto& app = filteredApps_[i];
     auto fg = textColor;
     auto itemBg = bg;
@@ -79,13 +93,13 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
       itemBg = selectedBg;
     }
     std::string label = app.name;
-    if ((int)label.size() > menuW - 4)
-      label = label.substr(0, menuW - 7) + "...";
-    canvas::write(canvas, 2, itemY, label, fg, itemBg);
+    if ((int)label.size() > menuW_ - 4)
+      label = label.substr(0, menuW_ - 7) + "...";
+    canvas::write(canvas, menuX_ + 2, itemY, label, fg, itemBg);
     itemY++;
   }
 
-  canvas::write(canvas, 2, y_ + menuH - 1,
+  canvas::write(canvas, menuX_ + 2, menuY_ + menuH_ - 1,
     "Type to search | Enter to launch",
     ftxui::Color::RGB(150, 150, 150), bg);
 }
@@ -111,6 +125,7 @@ bool StartMenu::handleEvent(ftxui::Event event) {
 
   if (event == ftxui::Event::Return) {
     open_ = false;
+    if (onLaunch) onLaunch();
     return true;
   }
 
@@ -118,6 +133,28 @@ bool StartMenu::handleEvent(ftxui::Event event) {
     if (!search_.empty()) {
       search_.pop_back();
       updateFilter();
+    }
+    return true;
+  }
+
+  if (event.is_mouse()) {
+    auto& mouse = event.mouse();
+    if (mouse.motion == ftxui::Mouse::Pressed && mouse.button == ftxui::Mouse::Left) {
+      int hit = hitTest(mouse.x, mouse.y);
+      if (hit >= 0) {
+        selected_idx_ = hit;
+        open_ = false;
+        if (onLaunch) onLaunch();
+        return true;
+      }
+      if (hit == -2) {
+        return true;
+      }
+      if (hit == -1) {
+        open_ = false;
+        search_ = "";
+        return false;
+      }
     }
     return true;
   }
