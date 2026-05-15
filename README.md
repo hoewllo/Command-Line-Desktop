@@ -1,4 +1,4 @@
-# command-desktop
+# Command Line Desktop
 
 A terminal-based desktop environment simulator in C++17.
 
@@ -14,7 +14,7 @@ apt install libftxui-dev
 cmake -B build && cmake --build build
 
 # Run
-./build/command-desktop
+./build/cld
 ```
 
 ## Usage

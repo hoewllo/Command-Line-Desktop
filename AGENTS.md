@@ -1,4 +1,4 @@
-# AGENTS.md — command-desktop
+# AGENTS.md — Command Line Desktop (cld)
 
 A terminal-based desktop environment simulator in C++.
 
@@ -18,7 +18,7 @@ apt install libftxui-dev       # Debian/Ubuntu
 # or: FetchContent in CMake     # other platforms
 
 cmake -B build && cmake --build build
-./build/command-desktop
+./build/cld
 ```
 
 ## Architecture
