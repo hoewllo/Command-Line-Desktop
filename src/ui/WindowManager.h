@@ -39,6 +39,8 @@ private:
 
   void handleDrag(ftxui::Event event);
   void handleResize(ftxui::Event event);
+  void trySnap(WindowFrame* win);
 
   static constexpr int resize_margin_ = 3;
+  static constexpr int snap_margin_ = 3;
 };

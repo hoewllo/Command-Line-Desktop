@@ -39,49 +39,78 @@ void Dock::removeApp(const std::string& name) {
 void Dock::draw(ftxui::Canvas& canvas) {
   if (!visible()) return;
 
-  auto accentColor = ftxui::Color::RGB(233, 69, 96);
-  auto runningColor = ftxui::Color::RGB(0, 255, 128);
+  auto accent = ftxui::Color::RGB(233, 69, 96);
+  auto dimText = ftxui::Color::RGB(140, 140, 160);
+  auto activeFg = ftxui::Color::RGB(255, 255, 255);
+  auto normalFg = ftxui::Color::RGB(200, 200, 220);
+  auto minFg = ftxui::Color::RGB(100, 100, 120);
+  auto runFg = ftxui::Color::RGB(0, 255, 128);
 
-  int screenW = canvas.width() / 2;
-  int screenH = canvas.height() / 4;
+  int sw = canvas.width() / 2;
+  int sh = canvas.height() / 4;
+  int dockY = sh - height_;
 
-  int dockY = screenH - height_;
+  // Fill dock bar
+  canvas::fill(canvas, 0, dockY, sw, height_, bgColor_);
 
-  canvas::fill(canvas, 0, dockY, screenW, height_, bgColor_);
-
+  // "Start" with run/restart indicators  
   if (flash_ > 0) {
-    canvas::write(canvas, 1, dockY, " [Start] ", bgColor_, accentColor);
+    canvas::write(canvas, 1, dockY, " [Start] ", bgColor_, accent);
     flash_--;
   } else {
-    canvas::write(canvas, 1, dockY, " [Start] ", accentColor, bgColor_);
+    canvas::write(canvas, 1, dockY, " [Start] ", accent, bgColor_);
   }
-  canvas::write(canvas, 11, dockY, "\u2502", textColor_, bgColor_);
 
-  int clockWidth = (screenW > 20) ? 8 : 0;
-  int maxAppX = screenW - 6 - clockWidth;
+  // Separator
+  canvas::write(canvas, 10, dockY, " \u2502 ", dimText, bgColor_);
 
   int x = 14;
-  bool truncated = false;
-  for (const auto& app : apps_) {
-    int nextX = x + static_cast<int>(app.name.size()) + 3;
-    if (nextX >= maxAppX) { truncated = true; break; }
-    auto fg = app.is_running ? runningColor : textColor_;
-    canvas::write(canvas, x, dockY, " " + app.name + " ", fg, bgColor_);
-    x = nextX;
-  }
-  if (truncated && x + 2 <= maxAppX) {
-    canvas::write(canvas, x, dockY, ">>", textColor_, bgColor_);
+  int clockW = 8;
+  int maxX = sw - 2 - clockW;
+
+  // Draw windows from WindowManager
+  if (wm_) {
+    auto wins = wm_->windows();
+    for (size_t i = 0; i < wins.size(); ++i) {
+      auto* win = wins[i];
+      std::string label = win->title();
+      bool isFocused = win->focused();
+      bool isMin = win->isMinimized();
+
+      // Truncate label
+      if (static_cast<int>(label.size()) > 14)
+        label = label.substr(0, 13) + "\u2026";
+      int entryW = static_cast<int>(label.size()) + 3;
+
+      if (x + entryW + 1 > maxX) break;
+
+      // Indicator
+      std::string ind;
+      if (isFocused) ind = "\u25C9";       // ◉ focused
+      else if (isMin) ind = "\u25CB";      // ○ minimized
+      else ind = "\u25CF";                 // ● normal
+
+      auto fg = isFocused ? activeFg : (isMin ? minFg : normalFg);
+
+      canvas::write(canvas, x, dockY, " " + ind + label + " ", fg, bgColor_);
+
+      // Active window underline
+      if (isFocused) {
+        for (int ch = x; ch < x + entryW; ++ch) {
+          canvas::write(canvas, ch, dockY + 1, "\u2500", accent, bgColor_);
+        }
+      }
+
+      x += entryW + 1;
+    }
   }
 
+  // Clock on the right
   std::time_t t = std::time(nullptr);
   auto tm_result = portable_localtime(t);
   char timeBuf[16];
   std::strftime(timeBuf, sizeof(timeBuf), "%H:%M", &tm_result);
-
-  if (screenW > 20) {
-    canvas::write(canvas, screenW - 6, dockY, std::string(" ") + timeBuf + " ",
-      textColor_, bgColor_);
-  }
+  canvas::write(canvas, sw - 7, dockY, " " + std::string(timeBuf) + " ", textColor_, bgColor_);
 }
 
 bool Dock::handleEvent(ftxui::Event event) {
@@ -89,34 +118,44 @@ bool Dock::handleEvent(ftxui::Event event) {
 
   if (event.is_mouse()) {
     auto& mouse = event.mouse();
-    int screenH = ftxui::Terminal::Size().dimy;
-    int mouseY = screenH - height_;
+    int sh = ftxui::Terminal::Size().dimy;
+    int dockY = sh - height_;
 
-    if (mouse.y >= mouseY && mouse.y < mouseY + height_ &&
+    if (mouse.y >= dockY && mouse.y < dockY + height_ &&
         mouse.button == ftxui::Mouse::Left &&
         mouse.motion == ftxui::Mouse::Pressed) {
-      if (mouse.x >= 1 && mouse.x <= 10) {
+      // Start button
+      if (mouse.x >= 1 && mouse.x <= 9) {
         if (onStartClick) onStartClick();
         flash_ = 2;
         return true;
       }
-      int x = 14;
-      for (int i = 0; i < static_cast<int>(apps_.size()); ++i) {
-        int appW = static_cast<int>(apps_[static_cast<size_t>(i)].name.size()) + 2;
-        if (mouse.x >= x && mouse.x < x + appW) {
-          if (wm_) {
-            for (auto* win : wm_->windows()) {
-              if (win->title() == apps_[static_cast<size_t>(i)].name) {
-                if (win->isMinimized())
-                  win->restore();
-                wm_->focusWindow(win);
-                break;
-              }
-            }
+
+      // Window entries
+      if (wm_) {
+        auto wins = wm_->windows();
+        int x = 14;
+        int clockW = 8;
+        int sw = ftxui::Terminal::Size().dimx;
+        int maxX = sw - 2 - clockW;
+
+        for (size_t i = 0; i < wins.size(); ++i) {
+          auto* win = wins[i];
+          std::string label = win->title();
+          if (static_cast<int>(label.size()) > 14)
+            label = label.substr(0, 13) + "\u2026";
+          int entryW = static_cast<int>(label.size()) + 3;
+
+          if (x + entryW + 1 > maxX) break;
+
+          if (mouse.x >= x && mouse.x < x + entryW) {
+            if (win->isMinimized())
+              win->restore();
+            wm_->focusWindow(win);
+            return true;
           }
-          return true;
+          x += entryW + 1;
         }
-        x += appW + 3;
       }
     }
   }

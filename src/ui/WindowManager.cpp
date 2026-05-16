@@ -128,11 +128,60 @@ void WindowManager::draw(ftxui::Canvas& canvas) {
   }
 }
 
+void WindowManager::trySnap(WindowFrame* win) {
+  auto dim = ftxui::Terminal::Size();
+  int screenW = std::max(10, dim.dimx);
+  int screenH = std::max(10, dim.dimy);
+
+  int x = win->x();
+  int y = win->y();
+  int w = win->width();
+  int h = win->height();
+  int rightEdge = x + w;
+  int botEdge = y + h;
+
+  bool snapped = false;
+
+  // Snap to top edge → maximize
+  if (y <= snap_margin_) {
+    x = 0;
+    y = 0;
+    w = screenW;
+    h = screenH;
+    snapped = true;
+  }
+
+  // Snap left
+  if (x <= snap_margin_) {
+    if (!snapped) {
+      x = 0;
+      w = screenW / 2;
+      snapped = true;
+    }
+  }
+
+  // Snap right
+  if (rightEdge >= screenW - snap_margin_) {
+    if (!snapped) {
+      x = screenW / 2;
+      w = screenW - screenW / 2;
+      snapped = true;
+    }
+  }
+
+  if (snapped) {
+    win->setPos(x, y, w, h);
+  }
+}
+
 void WindowManager::handleDrag(ftxui::Event event) {
   if (!event.is_mouse()) return;
   auto& mouse = event.mouse();
 
   if (mouse.motion == ftxui::Mouse::Released) {
+    if (dragging_ && dragWindow_) {
+      trySnap(dragWindow_);
+    }
     dragging_ = false;
     dragWindow_ = nullptr;
     return;

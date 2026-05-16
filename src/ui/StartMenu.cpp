@@ -72,7 +72,8 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
   int maxItems = std::min(total + 2, 22);
   menuH_ = maxItems + 3;
   menuX_ = 0;
-  menuY_ = std::max(0, static_cast<int>(canvas.height() / 4) - menuH_ - 3);
+  int sh = static_cast<int>(canvas.height() / 4);
+  menuY_ = std::max(0, sh - menuH_ - dock_height_ - 1);
 
   auto bg = ftxui::Color::RGB(30, 30, 50);
   auto borderColor = ftxui::Color::RGB(233, 69, 96);
