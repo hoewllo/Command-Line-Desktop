@@ -7,7 +7,6 @@
 #include <ftxui/screen/color.hpp>
 
 class WindowManager;
-class StartMenu;
 
 struct DockApp {
   std::string name;

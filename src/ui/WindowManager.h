@@ -16,13 +16,13 @@ public:
   void addWindow(std::unique_ptr<WindowFrame> window);
   void removeWindow(WindowFrame* window);
   void closeFocused();
-  void cycleFocus();
+  void cycleFocus(bool reverse = false);
   void focusWindow(WindowFrame* window);
 
   WindowFrame* focusedWindow();
   std::vector<WindowFrame*> windows();
 
-  int windowCount() const { return windows_.size(); }
+  int windowCount() const { return static_cast<int>(windows_.size()); }
 
 private:
   std::vector<std::unique_ptr<WindowFrame>> windows_;

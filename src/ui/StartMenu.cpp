@@ -26,24 +26,24 @@ void StartMenu::updateFilter() {
 }
 
 int StartMenu::totalEntries() const {
-  return (int)filteredApps_.size() + SPECIAL_ENTRIES;
+  return static_cast<int>(filteredApps_.size()) + SPECIAL_ENTRIES;
 }
 
 std::string StartMenu::selectedCommand() const {
-  if (selected_idx_ >= 0 && selected_idx_ < (int)filteredApps_.size())
-    return filteredApps_[selected_idx_].command;
+  if (selected_idx_ >= 0 && selected_idx_ < static_cast<int>(filteredApps_.size()))
+    return filteredApps_[static_cast<size_t>(selected_idx_)].command;
   return "";
 }
 
 std::string StartMenu::selectedName() const {
-  if (selected_idx_ >= 0 && selected_idx_ < (int)filteredApps_.size())
-    return filteredApps_[selected_idx_].name;
+  if (selected_idx_ >= 0 && selected_idx_ < static_cast<int>(filteredApps_.size()))
+    return filteredApps_[static_cast<size_t>(selected_idx_)].name;
   return "";
 }
 
 bool StartMenu::selectedIsInternal() const {
-  if (selected_idx_ >= 0 && selected_idx_ < (int)filteredApps_.size())
-    return filteredApps_[selected_idx_].internal;
+  if (selected_idx_ >= 0 && selected_idx_ < static_cast<int>(filteredApps_.size()))
+    return filteredApps_[static_cast<size_t>(selected_idx_)].internal;
   return false;
 }
 
@@ -68,7 +68,7 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
   int maxItems = std::min(total + 2, 22);
   menuH_ = maxItems + 3;
   menuX_ = 0;
-  menuY_ = std::max(0, (int)(canvas.height() / 4) - menuH_ - 3);
+  menuY_ = std::max(0, static_cast<int>(canvas.height() / 4) - menuH_ - 3);
 
   auto bg = ftxui::Color::RGB(30, 30, 50);
   auto borderColor = ftxui::Color::RGB(233, 69, 96);
@@ -91,8 +91,8 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
 
   canvas::write(canvas, menuX_ + 2, menuY_ + 1, "Search: ", borderColor, bg);
   std::string displaySearch = search_;
-  if ((int)displaySearch.size() > menuW_ - 12)
-    displaySearch = displaySearch.substr(0, menuW_ - 15) + "...";
+  if (static_cast<int>(displaySearch.size()) > menuW_ - 12)
+    displaySearch = displaySearch.substr(0, static_cast<size_t>(menuW_ - 15)) + "...";
   canvas::write(canvas, menuX_ + 10, menuY_ + 1, displaySearch, textColor, bg);
 
   int itemY = menuY_ + 3;
@@ -105,8 +105,8 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
     itemY++; shown++;
   }
 
-  for (int i = 0; i < (int)filteredApps_.size() && shown < visItems; ++i, ++shown) {
-    auto& app = filteredApps_[i];
+  for (int i = 0; i < static_cast<int>(filteredApps_.size()) && shown < visItems; ++i, ++shown) {
+    auto& app = filteredApps_[static_cast<size_t>(i)];
     auto fg = textColor;
     auto itemBg = bg;
     if (i == selected_idx_) {
@@ -114,8 +114,8 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
       itemBg = selectedBg;
     }
     std::string label = app.name;
-    if ((int)label.size() > menuW_ - 4)
-      label = label.substr(0, menuW_ - 7) + "...";
+    if (static_cast<int>(label.size()) > menuW_ - 4)
+      label = label.substr(0, static_cast<size_t>(menuW_ - 7)) + "...";
     canvas::write(canvas, menuX_ + 2, itemY, label, fg, itemBg);
     itemY++;
   }
@@ -129,7 +129,7 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
   }
 
   if (shown < visItems) {
-    int editIdx = (int)filteredApps_.size() + ENTRY_EDIT_CONFIG;
+    int editIdx = static_cast<int>(filteredApps_.size()) + ENTRY_EDIT_CONFIG;
     auto fg = (editIdx == selected_idx_) ? ftxui::Color::RGB(255, 255, 255) : specialColor;
     auto itemBg = (editIdx == selected_idx_) ? selectedBg : bg;
     canvas::write(canvas, menuX_ + 2, itemY, "Edit Config", fg, itemBg);
@@ -137,7 +137,7 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
   }
 
   if (shown < visItems) {
-    int exitIdx = (int)filteredApps_.size() + ENTRY_EXIT;
+    int exitIdx = static_cast<int>(filteredApps_.size()) + ENTRY_EXIT;
     auto fg = (exitIdx == selected_idx_) ? ftxui::Color::RGB(255, 255, 255) : specialColor;
     auto itemBg = (exitIdx == selected_idx_) ? selectedBg : bg;
     canvas::write(canvas, menuX_ + 2, itemY, "Exit", fg, itemBg);
@@ -170,7 +170,7 @@ bool StartMenu::handleEvent(ftxui::Event event) {
 
   if (event == ftxui::Event::Return) {
     open_ = false;
-    int appCount = (int)filteredApps_.size();
+    int appCount = static_cast<int>(filteredApps_.size());
     if (selected_idx_ < appCount) {
       if (onLaunch) onLaunch();
     } else {
@@ -198,7 +198,7 @@ bool StartMenu::handleEvent(ftxui::Event event) {
       if (hit >= 0) {
         selected_idx_ = hit;
         open_ = false;
-        int appCount = (int)filteredApps_.size();
+        int appCount = static_cast<int>(filteredApps_.size());
         if (hit < appCount) {
           if (onLaunch) onLaunch();
         } else {

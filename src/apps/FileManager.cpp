@@ -41,7 +41,6 @@ void FileManager::draw(ftxui::Canvas& canvas) {
   int list_x = x();
   int list_w = width();
 
-  auto borderColor = ftxui::Color::RGB(15, 52, 96);
   auto bg = ftxui::Color::RGB(22, 33, 62);
   auto textColor = ftxui::Color::RGB(224, 224, 224);
   auto dirColor = ftxui::Color::RGB(100, 200, 255);
@@ -50,22 +49,21 @@ void FileManager::draw(ftxui::Canvas& canvas) {
   canvas::fill(canvas, list_x, y(), list_w, height(), bg);
 
   std::string pathStr = current_path_.string();
-  if ((int)pathStr.size() > list_w - 4)
-    pathStr = "..." + pathStr.substr(pathStr.size() - list_w + 7);
+  if (static_cast<int>(pathStr.size()) > list_w - 4)
+    pathStr = "..." + pathStr.substr(pathStr.size() - static_cast<size_t>(list_w) + 7);
   canvas::write(canvas, list_x + 1, y(),
     " " + pathStr + " ",
     ftxui::Color::RGB(233, 69, 96), bg);
 
   int line_y = y() + 2;
   int maxVisible = height() - 3;
-  for (int i = scroll_offset_; i < (int)entries_.size() && line_y - y() < maxVisible + 2; ++i) {
-    auto entry = entries_[i];
+  for (int i = scroll_offset_; i < static_cast<int>(entries_.size()) && line_y - y() < maxVisible + 2; ++i) {
+    auto entry = entries_[static_cast<size_t>(i)];
     auto name = entry.filename().string();
-    if ((int)name.size() > list_w - 3)
-      name = name.substr(0, list_w - 4) + "~";
+    if (static_cast<int>(name.size()) > list_w - 3)
+      name = name.substr(0, static_cast<size_t>(list_w - 4)) + "~";
 
     auto fg = fs::is_directory(entry) ? dirColor : textColor;
-    auto lineBg = (i == selected_idx_) ? selectedBg : bg;
 
     if (i == selected_idx_) {
       canvas::write(canvas, list_x + 1, line_y,
@@ -88,7 +86,7 @@ bool FileManager::handleEvent(ftxui::Event event) {
     return true;
   }
   if (event == ftxui::Event::ArrowDown) {
-    if (selected_idx_ < (int)entries_.size() - 1) {
+    if (selected_idx_ < static_cast<int>(entries_.size()) - 1) {
       selected_idx_++;
       int visHeight = height() - 3;
       if (selected_idx_ >= scroll_offset_ + visHeight)
@@ -97,8 +95,8 @@ bool FileManager::handleEvent(ftxui::Event event) {
     return true;
   }
   if (event == ftxui::Event::Return) {
-    if (selected_idx_ >= 0 && selected_idx_ < (int)entries_.size()) {
-      auto& entry = entries_[selected_idx_];
+    if (selected_idx_ >= 0 && selected_idx_ < static_cast<int>(entries_.size())) {
+      auto& entry = entries_[static_cast<size_t>(selected_idx_)];
       auto name = entry.filename().string();
       if (name == "..") {
         navigateTo(current_path_.parent_path().string());

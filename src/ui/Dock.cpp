@@ -49,12 +49,9 @@ void Dock::draw(ftxui::Canvas& canvas) {
   canvas::write(canvas, 11, dockY, "\u2502", textColor_, bgColor_);
 
   int x = 14;
-  int totalW = 0;
-  for (const auto& app : apps_)
-    totalW += app.name.size() + 3;
   bool truncated = false;
   for (const auto& app : apps_) {
-    int nextX = x + (int)app.name.size() + 3;
+    int nextX = x + static_cast<int>(app.name.size()) + 3;
     if (nextX >= screenW - 7) { truncated = true; break; }
     auto fg = app.is_running ? runningColor : textColor_;
     canvas::write(canvas, x, dockY, " " + app.name + " ", fg, bgColor_);
@@ -82,7 +79,6 @@ bool Dock::handleEvent(ftxui::Event event) {
   if (event.is_mouse()) {
     auto& mouse = event.mouse();
     int screenH = ftxui::Terminal::Size().dimy;
-    int screenW = ftxui::Terminal::Size().dimx;
 
     if (mouse.y >= screenH - height_ && mouse.button == ftxui::Mouse::Left &&
         mouse.motion == ftxui::Mouse::Pressed) {
@@ -91,14 +87,14 @@ bool Dock::handleEvent(ftxui::Event event) {
         flash_ = 2;
         return true;
       }
-      for (int i = 0; i < (int)apps_.size(); ++i) {
+      for (int i = 0; i < static_cast<int>(apps_.size()); ++i) {
         int appX = 14;
         for (int j = 0; j < i; ++j)
-          appX += apps_[j].name.size() + 3;
-        if (mouse.x >= appX && mouse.x < appX + (int)apps_[i].name.size() + 2) {
+          appX += static_cast<int>(apps_[static_cast<size_t>(j)].name.size()) + 3;
+        if (mouse.x >= appX && mouse.x < appX + static_cast<int>(apps_[static_cast<size_t>(i)].name.size()) + 2) {
           if (wm_) {
             for (auto* win : wm_->windows()) {
-              if (win->title() == apps_[i].name) {
+              if (win->title() == apps_[static_cast<size_t>(i)].name) {
                 if (win->isMinimized())
                   win->restore();
                 wm_->focusWindow(win);

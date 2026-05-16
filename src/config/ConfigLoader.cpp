@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <stack>
+#include <list>
 #include <cstdio>
 
 static std::string trim(const std::string& s) {
@@ -32,16 +33,12 @@ static int indentLevel(const std::string& line) {
   return count;
 }
 
-static bool isAllDigits(const std::string& s) {
-  return !s.empty() && std::all_of(s.begin(), s.end(), ::isdigit);
-}
-
 struct YamlNode {
   enum Type { Scalar, Map, Seq };
   Type type = Scalar;
   std::string value;
-  std::vector<std::pair<std::string, YamlNode>> children;
-  std::vector<YamlNode> items;
+  std::list<std::pair<std::string, YamlNode>> children;
+  std::list<YamlNode> items;
 
   std::string getString(const std::string& key, const std::string& def = "") const {
     for (auto& [k, v] : children)

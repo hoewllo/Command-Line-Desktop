@@ -35,7 +35,6 @@ void WindowFrame::draw(ftxui::Canvas& canvas) {
   auto titleFg = ftxui::Color::RGB(255, 255, 255);
   auto bg = ftxui::Color::RGB(22, 33, 62);
 
-  int maxW = std::min(x() + width(), canvas.width() / 2);
   int maxH = std::min(y() + height(), canvas.height() / 4);
 
   canvas::fill(canvas, x(), y(), width(), titlebar_height_, titleColor_);
@@ -63,8 +62,8 @@ void WindowFrame::draw(ftxui::Canvas& canvas) {
   canvas::write(canvas, x() + width() - 1, y() + height() - 1, "\u2518", borderColor_, bg);
 
   auto titleText = title();
-  if ((int)titleText.size() > width() - 6)
-    titleText = titleText.substr(0, width() - 9) + "...";
+  if (static_cast<int>(titleText.size()) > width() - 6)
+    titleText = titleText.substr(0, static_cast<size_t>(width() - 9)) + "...";
   canvas::write(canvas, x() + 2, y(), " " + titleText + " ", titleFg, titleColor_);
 
   if (closable_) {

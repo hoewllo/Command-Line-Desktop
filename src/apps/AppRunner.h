@@ -21,7 +21,7 @@ public:
   void draw(ftxui::Canvas& canvas, int x, int y, int w, int h, bool showCursor, int scrollOffset = 0);
   int visibleRows() const { return rows_; }
   int cols() const { return cols_; }
-  int scrollbackRows() const { return (int)grid_.size(); }
+  int scrollbackRows() const { return static_cast<int>(grid_.size()); }
   bool inAltScreen() const { return alt_screen_; }
   void onAltScreenChange(bool alt);
 
@@ -87,6 +87,7 @@ private:
   void resizePty();
   int master_fd_ = -1;
   pid_t child_pid_ = -1;
+  int wake_pipe_[2] = {-1, -1};
 #endif
 
   std::string command_;

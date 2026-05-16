@@ -40,7 +40,7 @@ void ConfigEditor::draw(ftxui::Canvas& canvas) {
 
   for (int i = 0; i < fieldCount(); ++i) {
     if (line - y() >= height() - 1) break;
-    auto& field = fields_[i];
+    auto& field = fields_[static_cast<size_t>(i)];
 
     bool isSel = (i == selected_);
 
@@ -54,14 +54,14 @@ void ConfigEditor::draw(ftxui::Canvas& canvas) {
     }
 
     std::string label = field.label + ":";
-    if ((int)label.size() < 18) label.append(18 - label.size(), ' ');
+    if (static_cast<int>(label.size()) < 18) label.append(18 - label.size(), ' ');
 
     if (editing_ && isSel) {
       auto editBg = editingBg;
       canvas::write(canvas, x() + 2, line, label, labelColor, bg);
       std::string val = edit_buffer_ + "_";
-      if ((int)val.size() > width() - 22)
-        val = val.substr(0, width() - 25) + "...";
+      if (static_cast<int>(val.size()) > width() - 22)
+        val = val.substr(0, static_cast<size_t>(width() - 25)) + "...";
       canvas::write(canvas, x() + 20, line, val, textColor, editBg);
     } else if (isSel) {
       canvas::write(canvas, x() + 2, line, label, labelColor, bg);
@@ -79,13 +79,13 @@ void ConfigEditor::draw(ftxui::Canvas& canvas) {
     std::string appsLabel = "Apps (" + std::to_string(config_.apps.size()) + "):";
     canvas::write(canvas, x() + 2, line, appsLabel, ftxui::Color::RGB(233, 69, 96), bg);
     line++;
-    for (int i = 0; i < (int)config_.apps.size() && line - y() < height() - 1; ++i) {
-      auto& app = config_.apps[i];
+    for (int i = 0; i < static_cast<int>(config_.apps.size()) && line - y() < height() - 1; ++i) {
+      auto& app = config_.apps[static_cast<size_t>(i)];
       std::string entry = "  [" + std::to_string(i) + "] " + app.name;
       if (!app.command.empty()) entry += ": " + app.command;
       if (app.internal) entry += " (internal)";
-      if ((int)entry.size() > width() - 4)
-        entry = entry.substr(0, width() - 7) + "...";
+      if (static_cast<int>(entry.size()) > width() - 4)
+        entry = entry.substr(0, static_cast<size_t>(width() - 7)) + "...";
       int appSelIdx = fieldCount() + i;
       if (appSelIdx == selected_) {
         canvas::write(canvas, x() + 2, line, entry, ftxui::Color::White, selectedBg);
@@ -113,7 +113,7 @@ void ConfigEditor::save() {
 
 void ConfigEditor::confirmEdit() {
   if (selected_ < fieldCount()) {
-    auto& field = fields_[selected_];
+    auto& field = fields_[static_cast<size_t>(selected_)];
     if (field.type == Field::IntVal) {
       int val = 1;
       try { val = std::stoi(edit_buffer_); } catch (...) {}
@@ -146,7 +146,7 @@ bool ConfigEditor::handleEvent(ftxui::Event event) {
     } else {
       if (selected_ >= 0 && selected_ < fieldCount()) {
         editing_ = true;
-        auto& field = fields_[selected_];
+        auto& field = fields_[static_cast<size_t>(selected_)];
         if (field.type == Field::IntVal) {
           if (selected_ == 1) edit_buffer_ = std::to_string(config_.dock.height);
           else if (selected_ == 4) edit_buffer_ = std::to_string(config_.windows.default_width);
@@ -192,7 +192,7 @@ bool ConfigEditor::handleEvent(ftxui::Event event) {
     }
     if ((ch == "d" || ch == "D") && !editing_) {
       int appIdx = selected_ - fieldCount();
-      if (appIdx >= 0 && appIdx < (int)config_.apps.size()) {
+      if (appIdx >= 0 && appIdx < static_cast<int>(config_.apps.size())) {
         config_.apps.erase(config_.apps.begin() + appIdx);
         dirty_ = true;
         if (selected_ >= totalSelectable()) selected_ = std::max(0, totalSelectable() - 1);
@@ -204,13 +204,13 @@ bool ConfigEditor::handleEvent(ftxui::Event event) {
       newApp.name = "New App";
       newApp.command = "";
       config_.apps.push_back(newApp);
-      selected_ = fieldCount() + (int)config_.apps.size() - 1;
+      selected_ = fieldCount() + static_cast<int>(config_.apps.size()) - 1;
       dirty_ = true;
       return true;
     }
     if (editing_) {
       if (!ch.empty() && ch[0] >= 32 && ch[0] < 127 &&
-          (int)edit_buffer_.size() < 30) {
+          static_cast<int>(edit_buffer_.size()) < 30) {
         edit_buffer_ += ch;
       }
       return true;

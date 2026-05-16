@@ -4,6 +4,7 @@
 #include <cstring>
 #include <algorithm>
 #include <csignal>
+#include <cerrno>
 #include <sstream>
 
 #ifdef _WIN32
@@ -33,14 +34,14 @@ static const int ansi_rgb[16][3] = {
 
 TerminalBuffer::TerminalBuffer(int cols, int rows) : cols_(cols), rows_(rows) {
   for (int i = 0; i < rows_; ++i)
-    grid_.push_back(std::vector<TermCell>(cols_));
+    grid_.push_back(std::vector<TermCell>(static_cast<size_t>(cols_)));
 }
 
 TermCell& TerminalBuffer::cell(int x, int y) {
-  int idx = (int)grid_.size() - rows_ + y;
+  int idx = static_cast<int>(grid_.size()) - rows_ + y;
   if (idx < 0) idx = 0;
-  if (idx >= (int)grid_.size()) idx = (int)grid_.size() - 1;
-  return grid_[idx][std::max(0, std::min(cols_ - 1, x))];
+  if (idx >= static_cast<int>(grid_.size())) idx = static_cast<int>(grid_.size()) - 1;
+  return grid_[static_cast<size_t>(idx)][static_cast<size_t>(std::max(0, std::min(cols_ - 1, x)))];
 }
 
 void TerminalBuffer::newline() {
@@ -50,8 +51,8 @@ void TerminalBuffer::newline() {
 }
 
 void TerminalBuffer::scrollUp() {
-  grid_.push_back(std::vector<TermCell>(cols_));
-  if ((int)grid_.size() > scrollback_max_) grid_.pop_front();
+  grid_.push_back(std::vector<TermCell>(static_cast<size_t>(cols_)));
+  if (static_cast<int>(grid_.size()) > scrollback_max_) grid_.pop_front();
 }
 
 void TerminalBuffer::putChar(char ch) {
@@ -102,36 +103,39 @@ void TerminalBuffer::setCursor(int row, int col) {
 void TerminalBuffer::setCursorRow(int row) { cy_ = std::max(0, std::min(rows_ - 1, row)); }
 void TerminalBuffer::insertLines(int n) {
   for (int i = 0; i < n && cy_ < rows_ - 1; ++i) {
-    grid_.insert(grid_.end() - rows_ + cy_, std::vector<TermCell>(cols_));
-    if ((int)grid_.size() > scrollback_max_) grid_.pop_front();
-    rows_ = std::min(rows_, (int)grid_.size());
+    grid_.insert(grid_.end() - rows_ + cy_, std::vector<TermCell>(static_cast<size_t>(cols_)));
+    if (static_cast<int>(grid_.size()) > scrollback_max_) grid_.pop_front();
+    rows_ = std::min(rows_, static_cast<int>(grid_.size()));
   }
 }
 void TerminalBuffer::deleteLines(int n) {
   for (int i = 0; i < n && cy_ < rows_ - 1; ++i) {
-    int idx = (int)grid_.size() - rows_ + cy_;
-    if (idx >= 0 && idx < (int)grid_.size()) {
+    int idx = static_cast<int>(grid_.size()) - rows_ + cy_;
+    if (idx >= 0 && idx < static_cast<int>(grid_.size())) {
       grid_.erase(grid_.begin() + idx);
-      grid_.push_back(std::vector<TermCell>(cols_));
+      grid_.push_back(std::vector<TermCell>(static_cast<size_t>(cols_)));
     }
   }
 }
 
 void TerminalBuffer::ansiColor(int idx, uint8_t& r, uint8_t& g, uint8_t& b) {
-  if (idx >= 0 && idx < 16) { r = ansi_rgb[idx][0]; g = ansi_rgb[idx][1]; b = ansi_rgb[idx][2]; }
-  else { r = g = b = 200; }
+  if (idx >= 0 && idx < 16) {
+    r = static_cast<uint8_t>(ansi_rgb[idx][0]);
+    g = static_cast<uint8_t>(ansi_rgb[idx][1]);
+    b = static_cast<uint8_t>(ansi_rgb[idx][2]);
+  } else { r = g = b = 200; }
 }
 
 void TerminalBuffer::color256(int idx, uint8_t& r, uint8_t& g, uint8_t& b) {
   if (idx < 16) { ansiColor(idx, r, g, b); }
   else if (idx < 232) {
     int i = idx - 16;
-    r = (i / 36) % 6 * 51;
-    g = (i / 6) % 6 * 51;
-    b = i % 6 * 51;
+    r = static_cast<uint8_t>((i / 36) % 6 * 51);
+    g = static_cast<uint8_t>((i / 6) % 6 * 51);
+    b = static_cast<uint8_t>(i % 6 * 51);
   } else {
     int gray = (idx - 232) * 10 + 8;
-    r = g = b = std::min(255, gray);
+    r = g = b = static_cast<uint8_t>(std::min(255, gray));
   }
 }
 
@@ -149,13 +153,13 @@ void TerminalBuffer::applySGR(const std::vector<int>& params) {
     else if (p >= 30 && p <= 37) { ansiColor(p - 30, cur_fg_r, cur_fg_g, cur_fg_b); }
     else if (p == 38) {
       if (i + 2 < params.size() && params[i+1] == 5) { color256(params[i+2], cur_fg_r, cur_fg_g, cur_fg_b); i += 2; }
-      else if (i + 4 < params.size() && params[i+1] == 2) { cur_fg_r = params[i+2]; cur_fg_g = params[i+3]; cur_fg_b = params[i+4]; i += 4; }
+      else if (i + 4 < params.size() && params[i+1] == 2) { cur_fg_r = static_cast<uint8_t>(params[i+2]); cur_fg_g = static_cast<uint8_t>(params[i+3]); cur_fg_b = static_cast<uint8_t>(params[i+4]); i += 4; }
     } else if (p == 39) {
       cur_fg_r = def_fg_r; cur_fg_g = def_fg_g; cur_fg_b = def_fg_b;
     } else if (p >= 40 && p <= 47) { ansiColor(p - 40, cur_bg_r, cur_bg_g, cur_bg_b); }
     else if (p == 48) {
       if (i + 2 < params.size() && params[i+1] == 5) { color256(params[i+2], cur_bg_r, cur_bg_g, cur_bg_b); i += 2; }
-      else if (i + 4 < params.size() && params[i+1] == 2) { cur_bg_r = params[i+2]; cur_bg_g = params[i+3]; cur_bg_b = params[i+4]; i += 4; }
+      else if (i + 4 < params.size() && params[i+1] == 2) { cur_bg_r = static_cast<uint8_t>(params[i+2]); cur_bg_g = static_cast<uint8_t>(params[i+3]); cur_bg_b = static_cast<uint8_t>(params[i+4]); i += 4; }
     } else if (p == 49) {
       cur_bg_r = def_bg_r; cur_bg_g = def_bg_g; cur_bg_b = def_bg_b;
     } else if (p >= 90 && p <= 97) { ansiColor(p - 90 + 8, cur_fg_r, cur_fg_g, cur_fg_b); }
@@ -200,7 +204,7 @@ void TerminalBuffer::executeCSI(char final_char) {
         saved_grid_rows_ = rows_;
         grid_.clear();
         for (int i = 0; i < rows_; ++i)
-          grid_.push_back(std::vector<TermCell>(cols_));
+          grid_.push_back(std::vector<TermCell>(static_cast<size_t>(cols_)));
         cx_ = cy_ = 0;
         alt_screen_ = true;
       }
@@ -221,7 +225,7 @@ void TerminalBuffer::executeCSI(char final_char) {
 
 void TerminalBuffer::write(const char* data, int len) {
   for (int i = 0; i < len; ++i) {
-    unsigned char ch = (unsigned char)data[i];
+    unsigned char ch = static_cast<unsigned char>(data[i]);
 
     if (state_ == NORMAL) {
       if (ch == '\x1b') { state_ = ESC; }
@@ -230,18 +234,17 @@ void TerminalBuffer::write(const char* data, int len) {
       else if (ch == '\b') { if (cx_ > 0) cx_--; }
       else if (ch == '\t') { cx_ = ((cx_ + 8) / 8) * 8; if (cx_ >= cols_) { cx_ = 0; newline(); } }
       else if (ch == '\a') { /* bell - ignore */ }
-      else if (ch >= 32) { putChar((char)ch); }
+      else if (ch >= 32) { putChar(static_cast<char>(ch)); }
     } else if (state_ == ESC) {
       if (ch == '[') { state_ = CSI; csi_buf_.clear(); csi_private_ = false; }
       else if (ch == ']') { state_ = OSC; }
       else if (ch == '7') { saved_cx_ = cx_; saved_cy_ = cy_; state_ = NORMAL; }
       else if (ch == '8') { cx_ = saved_cx_; cy_ = saved_cy_; state_ = NORMAL; }
-      else if (ch == 'c') { /* ris - ignore */ state_ = NORMAL; }
       else { state_ = NORMAL; }
     } else if (state_ == CSI) {
       if (ch == '?') { csi_private_ = true; }
-      else if ((ch >= '0' && ch <= '9') || ch == ';') { csi_buf_ += (char)ch; }
-      else if (ch >= 0x40 && ch <= 0x7E) { executeCSI((char)ch); state_ = NORMAL; }
+      else if ((ch >= '0' && ch <= '9') || ch == ';') { csi_buf_ += static_cast<char>(ch); }
+      else if (ch >= 0x40 && ch <= 0x7E) { executeCSI(static_cast<char>(ch)); state_ = NORMAL; }
       else { state_ = NORMAL; }
     } else if (state_ == OSC) {
       if (ch == '\x1b') { state_ = ESC; }
@@ -252,15 +255,15 @@ void TerminalBuffer::write(const char* data, int len) {
 
 void TerminalBuffer::resize(int cols, int rows) {
   cols_ = cols; rows_ = rows;
-  while ((int)grid_.size() < rows_) grid_.push_back(std::vector<TermCell>(cols_));
-  while ((int)grid_.size() > scrollback_max_) grid_.pop_front();
-  for (auto& row : grid_) row.resize(cols_);
+  while (static_cast<int>(grid_.size()) < rows_) grid_.push_back(std::vector<TermCell>(static_cast<size_t>(cols_)));
+  while (static_cast<int>(grid_.size()) > scrollback_max_) grid_.pop_front();
+  for (auto& row : grid_) row.resize(static_cast<size_t>(cols_));
   cx_ = std::min(cx_, cols_ - 1);
   cy_ = std::min(cy_, rows_ - 1);
 }
 
 void TerminalBuffer::draw(ftxui::Canvas& canvas, int x, int y, int w, int h, bool showCursor, int scrollOffset) {
-  int totalGrid = (int)grid_.size();
+  int totalGrid = static_cast<int>(grid_.size());
   int maxOffset = std::max(0, totalGrid - rows_);
   scrollOffset = std::max(0, std::min(scrollOffset, maxOffset));
   int drawRows = std::min(h, rows_);
@@ -276,7 +279,7 @@ void TerminalBuffer::draw(ftxui::Canvas& canvas, int x, int y, int w, int h, boo
     int buf_start = 0;
 
     for (int col = 0; col < drawCols; ++col) {
-      auto& c = grid_[gridIdx][std::max(0, std::min(cols_ - 1, col))];
+      auto& c = grid_[static_cast<size_t>(gridIdx)][static_cast<size_t>(std::max(0, std::min(cols_ - 1, col)))];
       bool isCursor = (showCursor && col == cx_ && row == cy_);
       uint8_t fg_r = isCursor ? 0 : c.fg_r;
       uint8_t fg_g = isCursor ? 0 : c.fg_g;
@@ -289,8 +292,8 @@ void TerminalBuffer::draw(ftxui::Canvas& canvas, int x, int y, int w, int h, boo
           fg_r != prev_fg_r || fg_g != prev_fg_g || fg_b != prev_fg_b) {
         if (!buf.empty()) {
           canvas::write(canvas, x + buf_start, y + row, buf,
-            ftxui::Color::RGB(prev_fg_r, prev_fg_g, prev_fg_b),
-            ftxui::Color::RGB(prev_bg_r, prev_bg_g, prev_bg_b));
+            ftxui::Color::RGB(static_cast<uint8_t>(prev_fg_r), static_cast<uint8_t>(prev_fg_g), static_cast<uint8_t>(prev_fg_b)),
+            ftxui::Color::RGB(static_cast<uint8_t>(prev_bg_r), static_cast<uint8_t>(prev_bg_g), static_cast<uint8_t>(prev_bg_b)));
         }
         buf.clear();
         buf_start = col;
@@ -301,8 +304,8 @@ void TerminalBuffer::draw(ftxui::Canvas& canvas, int x, int y, int w, int h, boo
     }
     if (!buf.empty()) {
       canvas::write(canvas, x + buf_start, y + row, buf,
-        ftxui::Color::RGB(prev_fg_r, prev_fg_g, prev_fg_b),
-        ftxui::Color::RGB(prev_bg_r, prev_bg_g, prev_bg_b));
+        ftxui::Color::RGB(static_cast<uint8_t>(prev_fg_r), static_cast<uint8_t>(prev_fg_g), static_cast<uint8_t>(prev_fg_b)),
+        ftxui::Color::RGB(static_cast<uint8_t>(prev_bg_r), static_cast<uint8_t>(prev_bg_g), static_cast<uint8_t>(prev_bg_b)));
     }
   }
 
@@ -326,17 +329,28 @@ void AppRunner::start() {
 #ifdef _WIN32
   worker_ = std::thread([this]() { readOutput(); });
 #else
+  if (pipe(wake_pipe_) == -1) {
+    running_ = false;
+    return;
+  }
+  int flags = fcntl(wake_pipe_[0], F_GETFL, 0);
+  fcntl(wake_pipe_[0], F_SETFL, flags | O_NONBLOCK);
+
   child_pid_ = forkpty(&master_fd_, nullptr, nullptr, nullptr);
   if (child_pid_ == 0) {
-    execl("/bin/sh", "sh", "-c", command_.c_str(), (char*)nullptr);
+    close(wake_pipe_[0]);
+    close(wake_pipe_[1]);
+    execl("/bin/sh", "sh", "-c", command_.c_str(), static_cast<char*>(nullptr));
     _exit(127);
   } else if (child_pid_ > 0) {
-    int flags = fcntl(master_fd_, F_GETFL, 0);
+    flags = fcntl(master_fd_, F_GETFL, 0);
     fcntl(master_fd_, F_SETFL, flags | O_NONBLOCK);
     resizePty();
     worker_ = std::thread([this]() { readOutputPty(); });
   } else {
+    master_fd_ = -1;
     running_ = false;
+    fprintf(stderr, "Error: forkpty() failed for command: %s\n", command_.c_str());
   }
 #endif
 }
@@ -344,6 +358,10 @@ void AppRunner::start() {
 void AppRunner::stop() {
   running_ = false;
 #ifndef _WIN32
+  if (wake_pipe_[1] >= 0) {
+    char c = 1;
+    write(wake_pipe_[1], &c, 1);
+  }
   if (child_pid_ > 0) {
     kill(child_pid_, SIGTERM);
     int status;
@@ -351,6 +369,8 @@ void AppRunner::stop() {
     child_pid_ = -1;
   }
   if (master_fd_ >= 0) { close(master_fd_); master_fd_ = -1; }
+  if (wake_pipe_[0] >= 0) { close(wake_pipe_[0]); wake_pipe_[0] = -1; }
+  if (wake_pipe_[1] >= 0) { close(wake_pipe_[1]); wake_pipe_[1] = -1; }
 #endif
   if (worker_.joinable()) worker_.join();
 }
@@ -359,8 +379,8 @@ void AppRunner::stop() {
 void AppRunner::resizePty() {
   if (master_fd_ < 0) return;
   struct winsize ws;
-  ws.ws_col = std::max(20, width() - 2);
-  ws.ws_row = std::max(10, height() - 2);
+  ws.ws_col = static_cast<unsigned short>(std::max(20, width() - 2));
+  ws.ws_row = static_cast<unsigned short>(std::max(10, height() - 2));
   ioctl(master_fd_, TIOCSWINSZ, &ws);
 }
 #endif
@@ -384,15 +404,22 @@ void AppRunner::readOutputPty() {
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(master_fd_, &fds);
-    struct timeval tv = {0, 100000};
-    int ret = select(master_fd_ + 1, &fds, nullptr, nullptr, &tv);
-    if (ret > 0) {
+    FD_SET(wake_pipe_[0], &fds);
+    int nfds = std::max(master_fd_, wake_pipe_[0]) + 1;
+    int ret = select(nfds, &fds, nullptr, nullptr, nullptr);
+    if (ret < 0) {
+      if (errno == EINTR) continue;
+      break;
+    }
+    if (FD_ISSET(wake_pipe_[0], &fds)) break;
+    if (FD_ISSET(master_fd_, &fds)) {
       ssize_t n = read(master_fd_, buf, sizeof(buf) - 1);
       if (n > 0) {
         buf[n] = '\0';
         std::lock_guard<std::mutex> lock(mutex_);
-        term_.write(buf, (int)n);
+        term_.write(buf, static_cast<int>(n));
       } else if (n == 0) break;
+      else if (n < 0 && errno != EAGAIN) break;
     }
   }
   running_ = false;

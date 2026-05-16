@@ -34,8 +34,8 @@ private:
 
   std::vector<Field> fields_;
   void setupFields();
-  int fieldCount() const { return (int)fields_.size(); }
-  int totalSelectable() const { return fieldCount() + (int)config_.apps.size(); }
+  int fieldCount() const { return static_cast<int>(fields_.size()); }
+  int totalSelectable() const { return fieldCount() + static_cast<int>(config_.apps.size()); }
   void save();
   void confirmEdit();
 };

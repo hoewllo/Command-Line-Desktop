@@ -12,7 +12,7 @@ inline ftxui::Color parseHex(const std::string& hex, ftxui::Color fallback = ftx
       auto r = std::stoi(h.substr(0, 2), nullptr, 16);
       auto g = std::stoi(h.substr(2, 2), nullptr, 16);
       auto b = std::stoi(h.substr(4, 2), nullptr, 16);
-      return ftxui::Color::RGB(r, g, b);
+      return ftxui::Color::RGB(static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b));
     } catch (...) {}
   }
   return fallback;

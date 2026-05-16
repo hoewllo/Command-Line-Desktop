@@ -47,7 +47,7 @@ void Desktop::loadConfig(const Config& config) {
       auto r = std::stoi(hex.substr(0, 2), nullptr, 16);
       auto g = std::stoi(hex.substr(2, 2), nullptr, 16);
       auto b = std::stoi(hex.substr(4, 2), nullptr, 16);
-      bgColor_ = ftxui::Color::RGB(r, g, b);
+      bgColor_ = ftxui::Color::RGB(static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b));
     } catch (...) {}
   }
 
@@ -153,7 +153,7 @@ ftxui::Element Desktop::Render() {
 
     if (ctx_open_) {
       int cw = 22;
-      int ch = (int)ctx_items_.size() + 2;
+      int ch = static_cast<int>(ctx_items_.size()) + 2;
       int cx = std::min(ctx_x_, dim.dimx - cw - 1);
       int cy = std::min(ctx_y_, dim.dimy - ch - 1);
       auto ctxBg = ftxui::Color::RGB(35, 35, 55);
@@ -170,11 +170,11 @@ ftxui::Element Desktop::Render() {
         canvas::write(canvas, cx + cw - 1, cy + i, "\u2502", ctxBorder,
           i == 0 ? ctxBorder : ctxBg);
       }
-      for (int i = 0; i < (int)ctx_items_.size(); ++i) {
+      for (int i = 0; i < static_cast<int>(ctx_items_.size()); ++i) {
         auto fg = (i == ctx_sel_) ? ftxui::Color::White : ctxText;
         auto bg = (i == ctx_sel_) ? ftxui::Color::RGB(233, 69, 96) : ctxBg;
-        std::string label = ctx_items_[i];
-        if ((int)label.size() > cw - 3) label = label.substr(0, cw - 6) + "...";
+        std::string label = ctx_items_[static_cast<size_t>(i)];
+        if (static_cast<int>(label.size()) > cw - 3) label = label.substr(0, static_cast<size_t>(cw - 6)) + "...";
         canvas::write(canvas, cx + 1, cy + 1 + i, " " + label + " ", fg, bg);
       }
     }
@@ -192,11 +192,11 @@ bool Desktop::OnEvent(ftxui::Event event) {
       return true;
     }
     if (event == ftxui::Event::ArrowDown) {
-      if (ctx_sel_ < (int)ctx_items_.size() - 1) ctx_sel_++;
+      if (ctx_sel_ < static_cast<int>(ctx_items_.size()) - 1) ctx_sel_++;
       return true;
     }
     if (event == ftxui::Event::Return) {
-      std::string sel = ctx_items_[ctx_sel_];
+      std::string sel = ctx_items_[static_cast<size_t>(ctx_sel_)];
       closeContextMenu();
       if (sel == "Terminal") launchApp("Terminal", "xterm");
       else if (sel == "File Manager") launchApp("File Manager", "", true);
@@ -209,15 +209,15 @@ bool Desktop::OnEvent(ftxui::Event event) {
       auto& mouse = event.mouse();
       if (mouse.motion == ftxui::Mouse::Pressed && mouse.button == ftxui::Mouse::Left) {
         int cw = 22;
-        int ch = (int)ctx_items_.size() + 2;
+        int ch = static_cast<int>(ctx_items_.size()) + 2;
         auto dim = ftxui::Terminal::Size();
         int cx = std::min(ctx_x_, dim.dimx - cw - 1);
         int cy = std::min(ctx_y_, dim.dimy - ch - 1);
         if (mouse.x >= cx && mouse.x < cx + cw && mouse.y >= cy && mouse.y < cy + ch) {
           int idx = mouse.y - cy - 1;
-          if (idx >= 0 && idx < (int)ctx_items_.size()) {
+          if (idx >= 0 && idx < static_cast<int>(ctx_items_.size())) {
             ctx_sel_ = idx;
-            std::string sel = ctx_items_[ctx_sel_];
+            std::string sel = ctx_items_[static_cast<size_t>(ctx_sel_)];
             closeContextMenu();
             if (sel == "Terminal") launchApp("Terminal", "xterm");
             else if (sel == "File Manager") launchApp("File Manager", "", true);
@@ -250,12 +250,6 @@ bool Desktop::OnEvent(ftxui::Event event) {
     return true;
   }
 
-  if (event.input() == "\x1b" || event.input() == "\x1b[11~") {
-    wm_->closeFocused();
-    removeClosedWindowsFromDock();
-    return true;
-  }
-
   if (menu_ && menu_->isOpen()) {
     if (menu_->handleEvent(event))
       return true;
@@ -266,6 +260,12 @@ bool Desktop::OnEvent(ftxui::Event event) {
 
   if (wm_ && wm_->handleEvent(event))
     return true;
+
+  if (event.input() == "\x1b") {
+    wm_->closeFocused();
+    removeClosedWindowsFromDock();
+    return true;
+  }
 
   if (event.is_mouse() && event.mouse().button == ftxui::Mouse::Right &&
       event.mouse().motion == ftxui::Mouse::Pressed) {

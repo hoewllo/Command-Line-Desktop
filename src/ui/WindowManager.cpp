@@ -13,9 +13,9 @@ void WindowManager::addWindow(std::unique_ptr<WindowFrame> window) {
   int h = std::min(window->height() > 0 ? window->height() : 30, dim.dimy - 10);
   int x = (dim.dimx - w) / 2;
   int y = (dim.dimy - h) / 4;
-  if (focused_idx_ >= 0 && focused_idx_ < (int)windows_.size()) {
-    x = windows_[focused_idx_]->x() + 3;
-    y = windows_[focused_idx_]->y() + 2;
+  if (focused_idx_ >= 0 && focused_idx_ < static_cast<int>(windows_.size())) {
+    x = windows_[static_cast<size_t>(focused_idx_)]->x() + 3;
+    y = windows_[static_cast<size_t>(focused_idx_)]->y() + 2;
   }
   x = std::max(0, std::min(x, dim.dimx - w - 5));
   y = std::max(0, std::min(y, dim.dimy - h - 5));
@@ -23,66 +23,80 @@ void WindowManager::addWindow(std::unique_ptr<WindowFrame> window) {
   window->setPos(x, y, w, h);
   window->setFocused(true);
 
-  for (auto& w : windows_) w->setFocused(false);
+          for (auto& win : windows_) win->setFocused(false);
   windows_.push_back(std::move(window));
-  focused_idx_ = (int)windows_.size() - 1;
+  focused_idx_ = static_cast<int>(windows_.size()) - 1;
 }
 
 void WindowManager::removeWindow(WindowFrame* window) {
-  for (int i = 0; i < (int)windows_.size(); ++i) {
-    if (windows_[i].get() == window) {
+  if (dragWindow_ == window) {
+    dragging_ = false;
+    resizing_ = false;
+    dragWindow_ = nullptr;
+  }
+  for (int i = 0; i < static_cast<int>(windows_.size()); ++i) {
+    if (windows_[static_cast<size_t>(i)].get() == window) {
       windows_.erase(windows_.begin() + i);
       if (focused_idx_ == i) {
-        focused_idx_ = (prev_focused_idx_ >= 0 && prev_focused_idx_ < (int)windows_.size())
-          ? prev_focused_idx_ : (int)windows_.size() - 1;
+        focused_idx_ = (prev_focused_idx_ >= 0 && prev_focused_idx_ < static_cast<int>(windows_.size()))
+          ? prev_focused_idx_ : static_cast<int>(windows_.size()) - 1;
       } else if (focused_idx_ > i) {
         focused_idx_--;
       }
       prev_focused_idx_ = -1;
-      if (focused_idx_ >= 0 && focused_idx_ < (int)windows_.size())
-        windows_[focused_idx_]->setFocused(true);
+      if (focused_idx_ >= 0 && focused_idx_ < static_cast<int>(windows_.size()))
+        windows_[static_cast<size_t>(focused_idx_)]->setFocused(true);
       return;
     }
   }
 }
 
 void WindowManager::closeFocused() {
-  if (focused_idx_ >= 0 && focused_idx_ < (int)windows_.size()) {
+  if (focused_idx_ >= 0 && focused_idx_ < static_cast<int>(windows_.size())) {
+    if (dragWindow_ == windows_[static_cast<size_t>(focused_idx_)].get()) {
+      dragging_ = false;
+      resizing_ = false;
+      dragWindow_ = nullptr;
+    }
     windows_.erase(windows_.begin() + focused_idx_);
-    focused_idx_ = (prev_focused_idx_ >= 0 && prev_focused_idx_ < (int)windows_.size())
-      ? prev_focused_idx_ : (int)windows_.size() - 1;
+    focused_idx_ = (prev_focused_idx_ >= 0 && prev_focused_idx_ < static_cast<int>(windows_.size()))
+      ? prev_focused_idx_ : static_cast<int>(windows_.size()) - 1;
     prev_focused_idx_ = -1;
-    if (focused_idx_ >= 0 && focused_idx_ < (int)windows_.size())
-      windows_[focused_idx_]->setFocused(true);
+    if (focused_idx_ >= 0 && focused_idx_ < static_cast<int>(windows_.size()))
+      windows_[static_cast<size_t>(focused_idx_)]->setFocused(true);
   }
 }
 
-void WindowManager::cycleFocus() {
+void WindowManager::cycleFocus(bool reverse) {
   if (windows_.empty()) return;
   prev_focused_idx_ = focused_idx_;
   if (focused_idx_ >= 0)
-    windows_[focused_idx_]->setFocused(false);
-  focused_idx_ = (focused_idx_ + 1) % windows_.size();
-  windows_[focused_idx_]->setFocused(true);
+    windows_[static_cast<size_t>(focused_idx_)]->setFocused(false);
+  if (reverse) {
+    focused_idx_ = static_cast<int>((static_cast<size_t>(focused_idx_) + windows_.size() - 1) % windows_.size());
+  } else {
+    focused_idx_ = static_cast<int>((static_cast<size_t>(focused_idx_) + 1) % windows_.size());
+  }
+  windows_[static_cast<size_t>(focused_idx_)]->setFocused(true);
 }
 
 void WindowManager::focusWindow(WindowFrame* window) {
   prev_focused_idx_ = focused_idx_;
-  for (int i = 0; i < (int)windows_.size(); ++i) {
-    windows_[i]->setFocused(windows_[i].get() == window);
-    if (windows_[i].get() == window) focused_idx_ = i;
+  for (int i = 0; i < static_cast<int>(windows_.size()); ++i) {
+    windows_[static_cast<size_t>(i)]->setFocused(windows_[static_cast<size_t>(i)].get() == window);
+    if (windows_[static_cast<size_t>(i)].get() == window) focused_idx_ = i;
   }
 }
 
 WindowFrame* WindowManager::focusedWindow() {
-  if (focused_idx_ >= 0 && focused_idx_ < (int)windows_.size())
-    return windows_[focused_idx_].get();
+  if (focused_idx_ >= 0 && focused_idx_ < static_cast<int>(windows_.size()))
+    return windows_[static_cast<size_t>(focused_idx_)].get();
   return nullptr;
 }
 
 std::vector<WindowFrame*> WindowManager::windows() {
   std::vector<WindowFrame*> result;
-  for (auto& w : windows_) result.push_back(w.get());
+  for (auto& win : windows_) result.push_back(win.get());
   return result;
 }
 
@@ -140,9 +154,15 @@ bool WindowManager::handleEvent(ftxui::Event event) {
   if (resizing_) { handleResize(event); return true; }
   if (dragging_) { handleDrag(event); return true; }
 
-  if (event == ftxui::Event::Tab || event == ftxui::Event::TabReverse) {
+  if (event == ftxui::Event::Tab) {
     if (windows_.size() > 1) {
-      cycleFocus();
+      cycleFocus(false);
+      return true;
+    }
+  }
+  if (event == ftxui::Event::TabReverse) {
+    if (windows_.size() > 1) {
+      cycleFocus(true);
       return true;
     }
   }
@@ -151,8 +171,8 @@ bool WindowManager::handleEvent(ftxui::Event event) {
     auto& mouse = event.mouse();
 
     if (mouse.motion == ftxui::Mouse::Pressed && mouse.button == ftxui::Mouse::Left) {
-      for (int i = (int)windows_.size() - 1; i >= 0; --i) {
-        auto* win = windows_[i].get();
+      for (int i = static_cast<int>(windows_.size()) - 1; i >= 0; --i) {
+        auto* win = windows_[static_cast<size_t>(i)].get();
         if (mouse.x >= win->x() && mouse.x < win->x() + win->width() &&
             mouse.y >= win->y() && mouse.y < win->y() + win->height()) {
 
@@ -184,10 +204,12 @@ bool WindowManager::handleEvent(ftxui::Event event) {
             dragOffsetY_ = mouse.y - win->y();
           }
 
-          if (mouse.x >= win->x() + win->width() - 3 ||
+          bool inTitlebar = mouse.y >= win->y() && mouse.y < win->y() + 2;
+          if (!inTitlebar && (
+              mouse.x >= win->x() + win->width() - 3 ||
               mouse.x <= win->x() + 3 ||
               mouse.y >= win->y() + win->height() - 3 ||
-              mouse.y <= win->y() + 3) {
+              mouse.y <= win->y() + 3)) {
             resizing_ = true;
             dragWindow_ = win;
           }
@@ -198,8 +220,8 @@ bool WindowManager::handleEvent(ftxui::Event event) {
     }
   }
 
-  if (focused_idx_ >= 0 && focused_idx_ < (int)windows_.size()) {
-    if (windows_[focused_idx_]->handleEvent(event))
+  if (focused_idx_ >= 0 && focused_idx_ < static_cast<int>(windows_.size())) {
+    if (windows_[static_cast<size_t>(focused_idx_)]->handleEvent(event))
       return true;
   }
 
