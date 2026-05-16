@@ -2,6 +2,7 @@
 #include <memory>
 #include <functional>
 #include <vector>
+#include <string>
 #include <ftxui/component/component_base.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/screen/color.hpp>
@@ -21,6 +22,13 @@ struct DesktopIcon {
   int w = 14, h = 3;
 };
 
+struct Notification {
+  std::string text;
+  std::string icon;
+  int lifetime = 120;  // frames remaining
+  ftxui::Color color{ftxui::Color::RGB(233, 69, 96)};
+};
+
 class Desktop : public ftxui::ComponentBase {
 public:
   Desktop();
@@ -38,12 +46,18 @@ public:
   void setScreen(ftxui::ScreenInteractive* s) { screen_ = s; }
   void setConfigPath(const std::string& path) { config_path_ = path; }
 
+  void showNotification(const std::string& text,
+    const std::string& icon = "\u24D8",
+    ftxui::Color color = ftxui::Color::RGB(233, 69, 96));
+
 private:
   void launchApp(const std::string& name, const std::string& command, bool internal = false);
   void openConfigEditor();
   void loadConfigFromFile();
   void openContextMenu(int mx, int my);
   void closeContextMenu();
+  void showPowerDialog();
+  void drawNotifications(ftxui::Canvas& c, int w, int h);
 
   void populateDesktopIcons();
   void drawWallpaper(ftxui::Canvas& c, int w, int h);
@@ -69,6 +83,10 @@ private:
   int ctx_sel_ = 0;
   std::vector<std::string> ctx_items_;
 
+  // Power dialog
+  bool power_dialog_ = false;
+  int power_sel_ = 0;
+
   int mouse_x_ = -1, mouse_y_ = -1;
 
   std::vector<DesktopIcon> desktop_icons_;
@@ -76,4 +94,8 @@ private:
   bool switcher_cycle_ = false;
   int switcher_selected_ = 0;
   int switcher_original_focus_ = -1;
+
+  // Notifications
+  std::vector<Notification> notifications_;
+  bool notify_layer_dirty_ = true;
 };

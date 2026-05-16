@@ -1,7 +1,7 @@
+#include "backend/Renderer.h"
 #include "ui/Desktop.h"
 #include "config/ConfigLoader.h"
 #include "apps/AppDetector.h"
-#include <ftxui/component/screen_interactive.hpp>
 #include <memory>
 #include <cstdio>
 
@@ -9,11 +9,13 @@ static void printHelp(const char* argv0) {
   std::fprintf(stderr, "Usage: %s [options]\n", argv0);
   std::fprintf(stderr, "\nOptions:\n");
   std::fprintf(stderr, "  --config FILE   Path to config file (default: config.yaml)\n");
+  std::fprintf(stderr, "  --x11           Run in X11/SDL2 window mode\n");
   std::fprintf(stderr, "  --help          Show this help\n");
 }
 
 int main(int argc, char* argv[]) {
   std::string configPath = "config.yaml";
+  Renderer::Type renderType = Renderer::Terminal;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
@@ -22,11 +24,19 @@ int main(int argc, char* argv[]) {
       return 0;
     } else if (arg == "--config" && i + 1 < argc) {
       configPath = argv[++i];
+    } else if (arg == "--x11") {
+      renderType = Renderer::X11;
     } else {
       std::fprintf(stderr, "Unknown option: %s\n", arg.c_str());
       printHelp(argv[0]);
       return 1;
     }
+  }
+
+  auto renderer = Renderer::create(renderType);
+  if (!renderer) {
+    std::fprintf(stderr, "Failed to create renderer for selected mode\n");
+    return 1;
   }
 
   auto desktop = std::make_shared<Desktop>();
@@ -48,12 +58,5 @@ int main(int argc, char* argv[]) {
   desktop->setConfigPath(configPath);
   desktop->loadConfig(config);
 
-  auto screen = ftxui::ScreenInteractive::Fullscreen();
-  screen.TrackMouse(true);
-
-  desktop->setScreen(&screen);
-
-  screen.Loop(desktop);
-
-  return 0;
+  return renderer->run(std::move(desktop));
 }

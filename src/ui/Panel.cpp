@@ -5,7 +5,12 @@
 #include "core/ColorUtils.h"
 #include <algorithm>
 #include <ctime>
+#include <fstream>
+#include <string>
+#include <filesystem>
 #include <ftxui/screen/terminal.hpp>
+
+namespace fs = std::filesystem;
 
 namespace {
 std::tm portable_localtime(const std::time_t& t) {
@@ -16,6 +21,13 @@ std::tm portable_localtime(const std::time_t& t) {
   localtime_r(&t, &result);
 #endif
   return result;
+}
+
+std::string readSysFile(const std::string& path) {
+  std::ifstream f(path);
+  std::string line;
+  if (std::getline(f, line)) return line;
+  return "";
 }
 }
 
@@ -107,7 +119,6 @@ bool TaskSegment::handleEvent(ftxui::Event event) {
     if (mouse.x >= curX && mouse.x < curX + entryW) {
       if (win->isMinimized()) win->restore();
       wm_->focusWindow(win);
-      // Move window to front if workspace supports it
       return true;
     }
     curX += entryW + 1;
@@ -115,17 +126,34 @@ bool TaskSegment::handleEvent(ftxui::Event event) {
   return false;
 }
 
-// ====== ClockSegment ======
+// ====== ClockSegment (enhanced with date) ======
 void ClockSegment::draw(ftxui::Canvas& c, int x, int y, int w, int h) {
   (void)h;
   auto textColor = ftxui::Color::RGB(224, 224, 224);
+  auto dateColor = ftxui::Color::RGB(150, 150, 180);
   auto bg = ftxui::Color::RGB(22, 33, 62);
 
   std::time_t t = std::time(nullptr);
   auto tm_result = portable_localtime(t);
+
   char timeBuf[16];
   std::strftime(timeBuf, sizeof(timeBuf), "%H:%M", &tm_result);
-  canvas::write(c, x, y, " " + std::string(timeBuf) + " ", textColor, bg);
+
+  // Alternate between showing just time and time+date every 30 frames
+  tick_++;
+  bool showDate = (tick_ / 30) % 2 == 1;
+
+  if (showDate && w >= 16) {
+    char dateBuf[12];
+    std::strftime(dateBuf, sizeof(dateBuf), "%d %b", &tm_result);
+    std::string full = std::string(timeBuf) + " " + std::string(dateBuf);
+    if (static_cast<int>(full.size()) + 2 <= w)
+      canvas::write(c, x, y, " " + full + " ", textColor, bg);
+    else
+      canvas::write(c, x, y, " " + std::string(timeBuf) + " ", textColor, bg);
+  } else {
+    canvas::write(c, x, y, " " + std::string(timeBuf) + " ", textColor, bg);
+  }
 }
 
 // ====== WorkspaceSegment ======
@@ -136,7 +164,6 @@ void WorkspaceSegment::draw(ftxui::Canvas& c, int x, int y, int w, int h) {
   auto highlight = ftxui::Color::RGB(233, 69, 96);
 
   std::string label = " " + std::to_string(cur_ + 1) + "/" + std::to_string(total_) + " ";
-  // Ensure fits within w
   if (static_cast<int>(label.size()) > w) {
     label = std::to_string(cur_ + 1);
     if (static_cast<int>(label.size()) + 1 > w) label = "";
@@ -144,10 +171,78 @@ void WorkspaceSegment::draw(ftxui::Canvas& c, int x, int y, int w, int h) {
   canvas::write(c, x, y, label, highlight, bg);
 }
 
-// ====== TraySegment ======
+// ====== TraySegment (battery + network) ======
+std::string TraySegment::batteryIcon() {
+  int pct = batteryPercent();
+  if (pct < 0) return "";
+  if (pct >= 90) return "\u2588";
+  if (pct >= 70) return "\u2589";
+  if (pct >= 50) return "\u2588";
+  if (pct >= 30) return "\u2586";
+  if (pct >= 10) return "\u2584";
+  return "\u2581";
+}
+
+int TraySegment::batteryPercent() {
+  try {
+    std::string now = readSysFile("/sys/class/power_supply/BAT0/energy_now");
+    std::string full = readSysFile("/sys/class/power_supply/BAT0/energy_full");
+    if (now.empty() || full.empty()) {
+      now = readSysFile("/sys/class/power_supply/BAT0/charge_now");
+      full = readSysFile("/sys/class/power_supply/BAT0/charge_full");
+    }
+    if (now.empty() || full.empty()) return -1;
+    double n = std::stod(now);
+    double f = std::stod(full);
+    if (f > 0) return static_cast<int>(n * 100.0 / f);
+  } catch (...) {}
+  return -1;
+}
+
+bool TraySegment::hasNetwork() {
+  try {
+    for (auto& p : fs::directory_iterator("/sys/class/net")) {
+      std::string name = p.path().filename().string();
+      if (name == "lo") continue;
+      std::string state = readSysFile("/sys/class/net/" + name + "/operstate");
+      if (state == "up" || state == "UP\n") return true;
+    }
+  } catch (...) {}
+  return false;
+}
+
 void TraySegment::draw(ftxui::Canvas& c, int x, int y, int w, int h) {
-  (void)c; (void)x; (void)y; (void)w; (void)h;
-  // Placeholder for future system tray icons (battery, network, etc.)
+  (void)h;
+  auto bg = ftxui::Color::RGB(22, 33, 62);
+  auto green = ftxui::Color::RGB(100, 200, 100);
+  auto white = ftxui::Color::RGB(200, 200, 220);
+  auto yellow = ftxui::Color::RGB(255, 200, 100);
+  auto red = ftxui::Color::RGB(255, 100, 100);
+
+  tick_++;
+  int curX = x;
+  int maxX = x + w;
+
+  // Network indicator
+  if (curX + 3 <= maxX) {
+    bool net = hasNetwork();
+    auto nFg = net ? green : red;
+    std::string netIcon = net ? "\u25C8" : "\u25CB";
+    canvas::write(c, curX, y, " " + netIcon + " ", nFg, bg);
+    curX += 3;
+  }
+
+  // Battery indicator (only draw every other frame to avoid excessive reads)
+  if (curX + 4 <= maxX && (tick_ % 6 < 3)) {
+    int pct = batteryPercent();
+    if (pct >= 0) {
+      auto bFg = pct > 20 ? white : (pct > 10 ? yellow : red);
+      std::string bIcon = batteryIcon();
+      char pctStr[8];
+      std::snprintf(pctStr, sizeof(pctStr), "%d%%", pct);
+      canvas::write(c, curX, y, " " + bIcon + " " + pctStr + " ", bFg, bg);
+    }
+  }
 }
 
 // ====== Panel ======
@@ -179,7 +274,7 @@ void Panel::draw(ftxui::Canvas& canvas) {
   // Panel background
   canvas::fill(canvas, 0, panelY, sw, height_, bgColor_);
 
-  // Layout: Start(10) | sep(3) | Taskbar(flex) | Workspace(7) | Clock(9)
+  // Layout: Start(10) | sep(3) | Taskbar(flex) | Tray(8) | Workspace(7) | Clock(9)
   int curX = 0;
   int segH = height_;
 
@@ -191,16 +286,24 @@ void Panel::draw(ftxui::Canvas& canvas) {
   canvas::write(canvas, curX, panelY, " \u2502 ", ftxui::Color::RGB(140, 140, 160), bgColor_);
   curX += 3;
 
-  int workspaceW = std::min(9, std::max(7, (sw - curX) / 10));
-  int clockW = 9;
-  int trayW = 0;
+  int trayW = 8;
+  int workspaceW = std::min(9, std::max(7, (sw - curX - trayW) / 12));
+  int clockW = std::min(16, std::max(9, (sw - curX - trayW) / 8));
 
   // Taskbar takes remaining space
-  int taskW = sw - curX - workspaceW - clockW - trayW - 1;
+  int taskW = sw - curX - trayW - workspaceW - clockW - 1;
   if (taskW > 5) {
     task_.draw(canvas, curX, panelY, taskW, segH);
     curX += taskW;
   }
+
+  // Separator
+  canvas::write(canvas, curX, panelY, " \u2502 ", ftxui::Color::RGB(140, 140, 160), bgColor_);
+  curX += 3;
+
+  // System tray
+  tray_.draw(canvas, curX, panelY, trayW, segH);
+  curX += trayW;
 
   // Workspace indicator
   ws_.draw(canvas, curX, panelY, workspaceW, segH);
@@ -215,6 +318,7 @@ bool Panel::handleEvent(ftxui::Event event) {
   if (!event.is_mouse()) return false;
 
   auto& mouse = event.mouse();
+  int sw = ftxui::Terminal::Size().dimx;
   int sh = ftxui::Terminal::Size().dimy;
   int panelY = sh - height_;
 
@@ -225,21 +329,17 @@ bool Panel::handleEvent(ftxui::Event event) {
 
   int relX = mouse.x;
 
-  // Try segments in layout order
-  if (relX < 10) {
-    return start_.handleEvent(event);
-  }
+  // Start button
+  if (relX < 10) return start_.handleEvent(event);
 
-  // Taskbar (flex between separator and workspace indicator)
-  int sw = ftxui::Terminal::Size().dimx;
-  int workspaceW = std::min(9, std::max(7, (sw - 13) / 10));
-  int clockW = 9;
+  // Taskbar (between Start+sep and Tray)
+  int trayW = 8;
+  int workspaceW = std::min(9, std::max(7, (sw - 13 - trayW) / 12));
+  int clockW = std::min(16, std::max(9, (sw - 13 - trayW) / 8));
   int curX = 13;
-  int taskW = sw - curX - workspaceW - clockW - 1;
+  int taskW = sw - curX - trayW - workspaceW - clockW - 4;
 
-  if (relX >= curX && relX < curX + taskW) {
-    return task_.handleEvent(event);
-  }
+  if (relX >= curX && relX < curX + taskW) return task_.handleEvent(event);
 
   return false;
 }

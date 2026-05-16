@@ -70,6 +70,12 @@ void Desktop::setupCompositor() {
     }), 30);
 
   compositor_.addLayer(std::make_unique<SimpleLayer>(
+    "notifications", [this](ftxui::Canvas& c) {
+      auto dim = ftxui::Terminal::Size();
+      drawNotifications(c, dim.dimx, dim.dimy);
+    }), 70);
+
+  compositor_.addLayer(std::make_unique<SimpleLayer>(
     "panel", [this](ftxui::Canvas& c) {
       if (panel_) panel_->draw(c);
     }), 50);
@@ -199,12 +205,69 @@ void Desktop::launchApp(const std::string& name, const std::string& command, boo
   if (wm) wm->addWindow(std::move(frame));
 }
 
+void Desktop::showNotification(const std::string& text,
+    const std::string& icon, ftxui::Color color) {
+  Notification n;
+  n.text = text;
+  n.icon = icon;
+  n.color = color;
+  n.lifetime = 150;
+  notifications_.push_back(n);
+  if (notifications_.size() > 5)
+    notifications_.erase(notifications_.begin());
+}
+
+void Desktop::drawNotifications(ftxui::Canvas& c, int w, int h) {
+  // Tick notification lifetimes
+  for (auto it = notifications_.begin(); it != notifications_.end(); ) {
+    it->lifetime--;
+    if (it->lifetime <= 0) it = notifications_.erase(it);
+    else ++it;
+  }
+  if (notifications_.empty()) return;
+
+  auto notifBg = ftxui::Color::RGB(25, 25, 50);
+  auto textFg = ftxui::Color::RGB(224, 224, 224);
+
+  int ny = 2;
+  for (size_t i = 0; i < notifications_.size(); ++i) {
+    auto& n = notifications_[i];
+    int alpha = std::min(255, n.lifetime * 4);
+    auto bg = n.lifetime < 20 ? ftxui::Color::RGB(
+      static_cast<uint8_t>(25 * alpha / 255),
+      static_cast<uint8_t>(25 * alpha / 255),
+      static_cast<uint8_t>(50 * alpha / 255)) : notifBg;
+
+    std::string msg = " " + n.icon + " " + n.text + " ";
+    int msgW = static_cast<int>(msg.size());
+    int nx = std::max(0, w - msgW - 4);
+
+    // Draw notification box
+    canvas::fill(c, nx, ny, msgW + 2, 3, bg);
+    canvas::write(c, nx, ny, "\u250c", n.color, n.color);
+    canvas::write(c, nx + msgW + 1, ny, "\u2510", n.color, n.color);
+    canvas::write(c, nx, ny + 2, "\u2514", n.color, bg);
+    canvas::write(c, nx + msgW + 1, ny + 2, "\u2518", n.color, bg);
+    for (int ix = 1; ix <= msgW; ++ix) {
+      canvas::write(c, nx + ix, ny, "\u2500", n.color, n.color);
+      canvas::write(c, nx + ix, ny + 2, "\u2500", n.color, bg);
+    }
+    canvas::write(c, nx, ny + 1, "\u2502", n.color, bg);
+    canvas::write(c, nx + msgW + 1, ny + 1, "\u2502", n.color, bg);
+    canvas::write(c, nx + 1, ny + 1, msg, textFg, bg);
+
+    ny += 4;
+    if (ny + 4 > h) break;
+  }
+}
+
 void Desktop::openContextMenu(int mx, int my) {
   ctx_items_ = {
     "Terminal",
     "File Manager",
     "Edit Config",
     "Reload Config",
+    "Power...",
     "Exit",
   };
   ctx_x_ = mx;
@@ -215,6 +278,11 @@ void Desktop::openContextMenu(int mx, int my) {
 
 void Desktop::closeContextMenu() {
   ctx_open_ = false;
+}
+
+void Desktop::showPowerDialog() {
+  power_dialog_ = true;
+  power_sel_ = 0;
 }
 
 void Desktop::drawWallpaper(ftxui::Canvas& c, int w, int h) {
@@ -362,6 +430,39 @@ ftxui::Element Desktop::Render() {
         canvas::write(canvas, cx + 1, cy + 1 + i, " " + label + " ", fg, bg);
       }
     }
+
+    // Power dialog
+    if (power_dialog_) {
+      int pw = 28, ph = 6;
+      int px = (dim.dimx - pw) / 2;
+      int py = (dim.dimy - ph) / 3;
+      auto pBg = ftxui::Color::RGB(30, 30, 55);
+      auto pBorder = ftxui::Color::RGB(233, 69, 96);
+      auto pText = ftxui::Color::RGB(200, 200, 220);
+      auto pSelBg = ftxui::Color::RGB(233, 69, 96);
+      auto pSelFg = ftxui::Color::RGB(255, 255, 255);
+      canvas::fill(canvas, px + 1, py + 1, pw - 2, ph - 2, pBg);
+      for (int i = 0; i < pw; ++i) {
+        canvas::write(canvas, px + i, py, "\u2500", pBorder, pBorder);
+        canvas::write(canvas, px + i, py + ph - 1, "\u2500", pBorder, pBg);
+      }
+      for (int i = 0; i < ph; ++i) {
+        canvas::write(canvas, px, py + i, "\u2502", pBorder, i == 0 ? pBorder : pBg);
+        canvas::write(canvas, px + pw - 1, py + i, "\u2502", pBorder, i == 0 ? pBorder : pBg);
+      }
+      canvas::write(canvas, px, py, "\u250c", pBorder, pBorder);
+      canvas::write(canvas, px + pw - 1, py, "\u2510", pBorder, pBorder);
+      canvas::write(canvas, px, py + ph - 1, "\u2514", pBorder, pBg);
+      canvas::write(canvas, px + pw - 1, py + ph - 1, "\u2518", pBorder, pBg);
+      canvas::write(canvas, px + 2, py + 1, " Power Off ", ftxui::Color::RGB(255, 255, 255), pBorder);
+      const char* powerOpts[] = {"Log Out", "Restart", "Shutdown", "Cancel"};
+      for (int i = 0; i < 4; ++i) {
+        auto fg = (i == power_sel_) ? pSelFg : pText;
+        auto bg = (i == power_sel_) ? pSelBg : pBg;
+        std::string opt = powerOpts[i];
+        canvas::write(canvas, px + 2, py + 2 + i, " " + opt + " ", fg, bg);
+      }
+    }
   });
 }
 
@@ -385,7 +486,11 @@ bool Desktop::OnEvent(ftxui::Event event) {
       else if (sel == "File Manager") launchApp("File Manager", "", true);
       else if (sel == "Edit Config") openConfigEditor();
       else if (sel == "Reload Config") loadConfigFromFile();
-      else if (sel == "Exit" && screen_) screen_->Exit();
+      else if (sel == "Power...") showPowerDialog();
+      else if (sel == "Exit") {
+        showNotification("Goodbye!", "\u23FB", ftxui::Color::RGB(100, 100, 255));
+        if (screen_) screen_->Exit();
+      }
       return true;
     }
     if (event.is_mouse()) {
@@ -406,9 +511,55 @@ bool Desktop::OnEvent(ftxui::Event event) {
             else if (sel == "File Manager") launchApp("File Manager", "", true);
             else if (sel == "Edit Config") openConfigEditor();
             else if (sel == "Reload Config") loadConfigFromFile();
-            else if (sel == "Exit" && screen_) screen_->Exit();
+            else if (sel == "Power...") showPowerDialog();
+            else if (sel == "Exit") {
+              showNotification("Goodbye!", "\u23FB", ftxui::Color::RGB(100, 100, 255));
+              if (screen_) screen_->Exit();
+            }
           }
         } else { closeContextMenu(); }
+        return true;
+      }
+    }
+    return true;
+  }
+
+  // ------ Power dialog ------
+  if (power_dialog_) {
+    if (event == ftxui::Event::Escape) { power_dialog_ = false; return true; }
+    if (event == ftxui::Event::ArrowUp && power_sel_ > 0) { power_sel_--; return true; }
+    if (event == ftxui::Event::ArrowDown && power_sel_ < 3) { power_sel_++; return true; }
+    if (event == ftxui::Event::Return) {
+      power_dialog_ = false;
+      if (power_sel_ == 0) {
+        showNotification("Logging out...", "\u23FB", ftxui::Color::RGB(255, 200, 100));
+      } else if (power_sel_ == 1) {
+        showNotification("Restarting...", "\u21BB", ftxui::Color::RGB(255, 200, 100));
+        if (screen_) screen_->Exit();
+      } else if (power_sel_ == 2) {
+        showNotification("Shutting down...", "\u2B1C", ftxui::Color::RGB(255, 100, 100));
+        if (screen_) screen_->Exit();
+      } else if (power_sel_ == 3) {
+        // Cancel
+      }
+      return true;
+    }
+    if (event.is_mouse()) {
+      auto& mouse = event.mouse();
+      if (mouse.motion == ftxui::Mouse::Pressed && mouse.button == ftxui::Mouse::Left) {
+        auto dim = ftxui::Terminal::Size();
+        int pw = 28, ph = 6;
+        int px = (dim.dimx - pw) / 2;
+        int py = (dim.dimy - ph) / 3;
+        if (mouse.x >= px && mouse.x < px + pw && mouse.y >= py + 2 && mouse.y < py + ph - 1) {
+          power_sel_ = mouse.y - py - 2;
+          if (power_sel_ >= 0 && power_sel_ <= 3) {
+            power_dialog_ = false;
+            if (power_sel_ == 0) showNotification("Logging out...", "\u23FB", ftxui::Color::RGB(255, 200, 100));
+            else if (power_sel_ == 1) { showNotification("Restarting...", "\u21BB", ftxui::Color::RGB(255, 200, 100)); if (screen_) screen_->Exit(); }
+            else if (power_sel_ == 2) { showNotification("Shutting down...", "\u2B1C", ftxui::Color::RGB(255, 100, 100)); if (screen_) screen_->Exit(); }
+          }
+        } else { power_dialog_ = false; }
         return true;
       }
     }

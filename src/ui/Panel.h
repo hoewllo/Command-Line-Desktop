@@ -47,12 +47,15 @@ private:
   WindowManager* wm_ = nullptr;
 };
 
-// ----- Clock segment -----
+// ----- Enhanced clock segment (HH:MM + date) -----
 class ClockSegment : public PanelSegment {
 public:
   void draw(ftxui::Canvas& c, int x, int y, int w, int h) override;
   int minWidth() const override { return 9; }
-  int maxWidth() const override { return 9; }
+  int maxWidth() const override { return 20; }
+
+private:
+  int tick_ = 0;
 };
 
 // ----- Workspace indicator segment -----
@@ -66,11 +69,18 @@ private:
   int cur_ = 0, total_ = 4;
 };
 
-// ----- System tray segment (placeholder) -----
+// ----- System tray segment (battery + network) -----
 class TraySegment : public PanelSegment {
 public:
   void draw(ftxui::Canvas& c, int x, int y, int w, int h) override;
-  int minWidth() const override { return 0; }
+  int minWidth() const override { return 5; }
+  int maxWidth() const override { return 12; }
+
+private:
+  int tick_ = 0;
+  std::string batteryIcon();
+  int batteryPercent();
+  bool hasNetwork();
 };
 
 // ----- Panel (replaces Dock) -----

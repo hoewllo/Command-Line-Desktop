@@ -1,28 +1,33 @@
 # AGENTS.md — Command Line Desktop (cld)
 
-A full desktop environment experience in your terminal.
-Use it on headless servers, WSL, or any terminal — no X11/Wayland needed.
-
-## Tech Stack
-
-- **Language**: C++17
-- **TUI**: FTXUI v5.0 (`ScreenInteractive::Fullscreen` mode, `Canvas` pixel rendering)
-- **Build**: CMake + system `libftxui-dev`
-- **Config**: YAML (lightweight parser, no yaml-cpp dependency)
+C++17 TUI desktop for headless servers / WSL. Renders via FTXUI Canvas. No X11/Wayland needed.
 
 ## Setup & Build
 
 ```bash
-# Install dependency (optional — FetchContent fallback auto-downloads FTXUI)
-apt install libftxui-dev       # Debian/Ubuntu
-# or: brew install ftxui        # macOS
-
+# Optional: apt install libftxui-dev (FetchContent fallback auto-downloads)
 cmake -B build && cmake --build build
 ./build/cld
+
+# X11/SDL2 window mode:
+cmake -B build-x11 -DENABLE_X11_BACKEND=ON && cmake --build build-x11
+./build-x11/cld --x11
 ```
 
-CMake tries `find_package(ftxui CONFIG)` first, then falls back to
-FetchContent. No system dep strictly required.
+- `file(GLOB_RECURSE SOURCES src/*.cpp)` — new `.cpp` files auto-detected
+- `X11Renderer.cpp` explicitly excluded unless `ENABLE_X11_BACKEND=ON`
+- CI builds Linux/macOS/Windows with smoke test on `./build/cld` for 2s (`build.yml`)
+- No tests or lint/format config present
+
+## Source Layout
+
+| Dir | Contents |
+|---|---|
+| `src/backend/` | `Renderer.h` (abstract), `TerminalRenderer.cpp` (no header!), `X11Renderer.h/.cpp` |
+| `src/core/` | `Component.h` (all inline), `ColorUtils.h` (all inline) |
+| `src/ui/` | `Desktop.h/.cpp`, `Layer.h` + `Compositor.cpp`, `Panel.h/.cpp`, `WindowManager.h/.cpp`, `WindowFrame.h/.cpp`, `WorkspaceManager.h/.cpp`, `StartMenu.h/.cpp`, `CanvasHelpers.h` (all inline) |
+| `src/apps/` | `FileManager.h/.cpp`, `AppRunner.h/.cpp`, `AppDetector.h/.cpp`, `ConfigEditor.h/.cpp` |
+| `src/config/` | `ConfigLoader.h/.cpp` (config structs live here, NOT a separate Config.h) |
 
 ## Architecture
 
@@ -33,97 +38,57 @@ Desktop (ftxui::ComponentBase)
   │   ├── DesktopIconsLayer    z=10  — clickable app icons
   │   ├── WindowsLayer         z=20  — WindowManager (current workspace)
   │   ├── MenuLayer            z=30  — StartMenu popup
-  │   ├── PanelLayer           z=50  — status bar (segments)
+  │   ├── PanelLayer           z=50  — segment-based status bar
+  │   ├── NotificationLayer    z=70  — toast popups (top-right, auto-fade ~5s)
   │   └── SwitcherLayer        z=100 — Alt+Tab overlay
   ├── WorkspaceManager (4 virtual desktops)
-  │   └── WindowManager per workspace
-  │       └── WindowFrame + Component content
-  ├── Panel (segment-based status bar)
-  │   ├── StartSegment    — [Start] button
-  │   ├── TaskSegment     — running windows (◉ active, ● normal, ○ minimized)
-  │   ├── WorkspaceSegment — "1/4" indicator
-  │   └── ClockSegment    — HH:MM display
-  └── Event dispatch: context menu > overlays > menu > panel > windows
+  │   └── WindowManager per workspace → WindowFrame → Component content
+  └── Panel segments: Start(10) | sep(3) | Taskbar(flex) | Workspace(7) | Clock(9) | Tray(5-12)
 ```
 
-### Layer system (`Layer.h`, `Compositor.cpp`)
-- Each UI feature is a `Layer` with `draw()` and optional `handleEvent()`
-- `SimpleLayer` wraps lambdas for quick layer creation
-- Z-order determines draw order (low → back, high → front)
-- Events are processed front-to-back (highest z first)
+### Segment-based Panel
+Inspired by tmux status bar. Each `PanelSegment` subclass provides `draw()` + `minWidth()`.
+Existing: `StartSegment`, `TaskSegment`, `WorkspaceSegment`, `ClockSegment`, `TraySegment` (battery + network from `/sys`).
 
-### Component base (`core/Component.h`)
-```
-Component (abstract)
-  ├── draw(Canvas&) = 0
-  ├── handleEvent(Event) -> bool
-  ├── title() -> string
-  └── x_, y_, width_, height_, visible_, focused_
-```
+### Layer system
+`Layer` interface with `draw()`, `handleEvent()`, `name()`.
+`SimpleLayer` wraps lambdas. `Compositor` sorts by z-order (low→back, high→front).
+Events dispatch front-to-back (highest z first).
 
-All window content inherits from Component. WindowFrame wraps any Component with a titlebar + borders.
-
-### Panel segments (`Panel.h`)
-The status bar (replaces old Dock) uses a segment architecture inspired by tmux status bar:
-- Segments are independent drawable units
-- Layout: `Start(10) | sep(3) | Taskbar(flex) | Workspace(7) | Clock(9)`
-- Adding a new segment = subclass PanelSegment + add to layout
-
-### Workspaces (`WorkspaceManager.h`)
-- 4 virtual desktops, each with its own WindowManager
-- Switch: Ctrl+Alt+Left/Right arrows (terminal-dependent)
-- Each workspace has independent window list
-- Panel shows "current/total" indicator
-
-## Canvas Coordinate System
-
-`Canvas` uses braille pixels (2 wide × 4 tall per terminal cell). `CanvasHelpers.h` provides:
-- `canvas::fill(c, x, y, w, h, bg)` — fill char-cell rect
-- `canvas::write(c, x, y, text, fg, bg)` — draw colored text at char coords
-- `canvas::hline`, `canvas::vline` — unicode line drawing
-
-All coordinates are in **character cells** (top-left origin). Functions internally map to
-braille coordinates via `x*2, y*4`.
+### Component model
+All window content inherits from `Component` (abstract: `draw(Canvas&)`, `handleEvent(Event)`, `title()`).
+`WindowFrame` wraps any Component with titlebar + borders + minimize/close.
+Canvas coords in character cells (top-left origin). Helpers at `src/ui/CanvasHelpers.h` map to braille pixels via `x*2, y*4`.
 
 ## Key Bindings
-
 | Shortcut | Action |
 |---|---|
 | `F1` | Toggle Start Menu |
-| `F2` | Toggle Window Switcher (Alt+Tab style) |
+| `F2` | Toggle Window Switcher (Alt+Tab) |
 | `F4` | Close focused window |
-| `Tab` / `Shift+Tab` | Cycle window focus (in switcher) |
 | `Ctrl+Q` | Quit |
 | `Alt+1..4` | Switch workspace (terminal-dependent) |
-| Mouse drag titlebar | Move window |
-| Mouse drag edge | Resize window |
-| Mouse click | Focus window |
-| Right-click desktop | Context menu |
-| Click desktop icon | Launch app |
+| `Alt+←/→` | Back/Forward (File Manager) |
+| Right-click desktop | Context menu (Terminal, FM, Edit Config, Power...) |
+| Right-click file | File context menu (Open, Rename, Copy, Delete, Properties) |
 
-Mouse position comes from terminal SGR mouse tracking — works over SSH xterm-forwarding.
+## Renderer Backend
+- **Terminal** (default): wraps `ftxui::ScreenInteractive::Fullscreen()` — `desktop->setScreen(&screen_)` + `screen_.Loop()`
+- **X11** (`--x11` flag): renders FTXUI `Screen::ToString()` ANSI output → parses true-color SGR codes → renders each cell via SDL_ttf. No private `ftxui::Color` member access needed.
+- **Factory**: `Renderer::create(Renderer::Type)` in `TerminalRenderer.cpp` (section guarded by `#ifdef ENABLE_X11_BACKEND`)
 
-## Auto-Detection
+## Gotchas
+- `ftxui::Color` has private `red_`/`green_`/`blue_` — no public RGB accessors. X11 renderer works around via ANSI parsing.
+- `Config` struct (AppConfig, DockConfig, WindowDefaults) defined in `src/config/ConfigLoader.h`, NOT `Config.h`
+- `TerminalRenderer` has no separate header — class defined + factory function both in `TerminalRenderer.cpp`
+- `config.yaml` lives at project root, loaded via `--config PATH` (default: `config.yaml`)
+- App detection: Linux `.desktop` files, macOS `.app` bundles, `$PATH` scan, user-defined in `config.yaml apps:`
+- Workspace switching via terminal escape sequences — not all terminals pass Alt+1..4 / Ctrl+Alt+arrows reliably
+- Canvas coordinate system: `x*2, y*4` braille pixel mapping in `CanvasHelpers.h`
 
-- **Linux**: parse `/usr/share/applications/*.desktop`
-- **macOS**: scan `/Applications/*.app`, `~/Applications/*.app`
-- **All**: scan `$PATH` for common tools (works on Linux, macOS, Windows)
-- **User-defined**: `config.yaml` under `apps:` key
+## Notifications & Power Dialog
+- Notifications: `Desktop::showNotification(text, icon, color)` → compositor layer z=70, top-right, auto-fade ~120 frames (~5s at 16ms)
+- Power Dialog: right-click desktop → "Power..." → centered popup with Log Out / Restart / Shutdown / Cancel
 
-## Conventions
-
-- Source layout: `src/core/`, `src/ui/`, `src/apps/`, `src/config/`
-- Headers `.h`, implementations `.cpp`
-- Prefer `auto`, `const`, and RAII; no raw `new`/`delete`
-- Events return `bool` (true = consumed, false = propagate)
-- Window coords: `x, y, width, height`, top-left origin
-- Keyboards-first design; mouse is enhancement, not required
-- Segment-based architecture for panel features (easy to extend)
-- New panel segments: subclass `PanelSegment`, add to `Panel` layout
-
-## Status
-
-**v0.2.x** — Desktop with wallpaper gradient, desktop icons, tmux-style panel,
-4 virtual workspaces, Alt+Tab window switcher, window snapping, floating windows
-with drag/resize/minimize/close, file manager, app runner with PTY, start menu
-with search, config editor, app detection.
+## Version
+v0.3.x — Desktop with wallpaper, desktop icons, segment panel, 4 workspaces, Alt+Tab, window snap, FM, app runner (PTY), start menu with search, config editor, X11 backend, notifications, power dialog.
