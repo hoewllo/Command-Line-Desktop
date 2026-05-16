@@ -434,25 +434,20 @@ void AppRunner::draw(ftxui::Canvas& canvas) {
   int termW = std::max(20, width() - 2);
   int termH = std::max(10, height() - 2);
 
+  int drawScroll = 0;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (term_.cols() != termW || term_.visibleRows() != termH)
       term_.resize(termW, termH);
-  }
 
 #ifndef _WIN32
-  if (termW != last_pty_w_ || termH != last_pty_h_) {
-    resizePty();
-    last_pty_w_ = termW;
-    last_pty_h_ = termH;
-  }
+    if (termW != last_pty_w_ || termH != last_pty_h_) {
+      resizePty();
+      last_pty_w_ = termW;
+      last_pty_h_ = termH;
+    }
 #endif
 
-  canvas::fill(canvas, x(), y(), width(), height(), ftxui::Color::RGB(10, 10, 15));
-
-  int drawScroll = 0;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
     bool alt = term_.inAltScreen();
     drawScroll = (scroll_offset_ > 0 && !alt) ? scroll_offset_ : 0;
     term_.draw(canvas, x() + 1, y() + 1, termW, termH, running_, drawScroll);
