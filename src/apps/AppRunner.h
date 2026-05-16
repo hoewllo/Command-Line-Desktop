@@ -45,6 +45,7 @@ private:
   std::string csi_buf_;
   bool csi_private_ = false;
 
+  TermCell dummy_{};
   TermCell& cell(int x, int y);
   void newline();
   void putChar(char ch);

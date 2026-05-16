@@ -11,6 +11,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/terminal.hpp>
 #include <algorithm>
+#include <stdexcept>
 
 Desktop::Desktop() {
   wm_ = std::make_shared<WindowManager>();
@@ -48,7 +49,8 @@ void Desktop::loadConfig(const Config& config) {
       auto g = std::stoi(hex.substr(2, 2), nullptr, 16);
       auto b = std::stoi(hex.substr(4, 2), nullptr, 16);
       bgColor_ = ftxui::Color::RGB(static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b));
-    } catch (...) {}
+    } catch (const std::invalid_argument&) {
+    } catch (const std::out_of_range&) {}
   }
 
   dock_->setDockHeight(config.dock.height);
@@ -109,13 +111,17 @@ void Desktop::launchApp(const std::string& name, const std::string& command, boo
 
 void Desktop::removeClosedWindowsFromDock() {
   auto wins = wm_->windows();
-  std::vector<std::string> winNames;
-  for (auto* w : wins) winNames.push_back(w->title());
+  std::vector<bool> consumed(wins.size(), false);
 
   std::vector<DockApp> updated;
   for (auto& app : dock_->apps()) {
-    if (std::find(winNames.begin(), winNames.end(), app.name) != winNames.end())
-      updated.push_back(app);
+    for (size_t i = 0; i < wins.size(); ++i) {
+      if (!consumed[i] && wins[i]->title() == app.name) {
+        consumed[i] = true;
+        updated.push_back(app);
+        break;
+      }
+    }
   }
   dock_->setApps(updated);
 }

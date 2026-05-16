@@ -35,16 +35,16 @@ void WindowFrame::draw(ftxui::Canvas& canvas) {
   auto titleFg = ftxui::Color::RGB(255, 255, 255);
   auto bg = ftxui::Color::RGB(22, 33, 62);
 
-  int maxH = std::min(y() + height(), canvas.height() / 4);
-
   canvas::fill(canvas, x(), y(), width(), titlebar_height_, titleColor_);
   canvas::fill(canvas, x(), y() + titlebar_height_, width(), height() - titlebar_height_, bg);
 
-  for (int cx = x(); cx < x() + width(); ++cx) {
+  int maxCx = std::min(x() + width(), canvas.width() / 2);
+  for (int cx = x(); cx < maxCx; ++cx) {
     canvas::write(canvas, cx, y(), "\u2500", borderColor_, titleColor_);
     canvas::write(canvas, cx, y() + height() - 1, "\u2500", borderColor_, bg);
   }
 
+  int maxH = y() + height();
   for (int cy = y(); cy < maxH; ++cy) {
     int leftX = x();
     int rightX = x() + width() - 1;

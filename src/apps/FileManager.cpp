@@ -14,11 +14,10 @@ void FileManager::loadDirectory(const fs::path& path) {
     for (const auto& entry : fs::directory_iterator(path)) {
       entries_.push_back(entry.path());
     }
-  } catch (...) {}
+  } catch (const std::filesystem::filesystem_error&) {}
   std::sort(entries_.begin(), entries_.end());
-  auto parent = path.parent_path();
-  if (parent != path && fs::exists(parent)) {
-    entries_.insert(entries_.begin(), parent / "..");
+  if (path.has_parent_path() && fs::exists(path.parent_path())) {
+    entries_.insert(entries_.begin(), path / "..");
   }
 }
 

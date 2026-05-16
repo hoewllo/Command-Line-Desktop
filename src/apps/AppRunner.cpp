@@ -6,6 +6,7 @@
 #include <csignal>
 #include <cerrno>
 #include <sstream>
+#include <stdexcept>
 
 #ifdef _WIN32
 #define POPEN _popen
@@ -38,6 +39,7 @@ TerminalBuffer::TerminalBuffer(int cols, int rows) : cols_(cols), rows_(rows) {
 }
 
 TermCell& TerminalBuffer::cell(int x, int y) {
+  if (grid_.empty()) return dummy_;
   int idx = static_cast<int>(grid_.size()) - rows_ + y;
   if (idx < 0) idx = 0;
   if (idx >= static_cast<int>(grid_.size())) idx = static_cast<int>(grid_.size()) - 1;
@@ -173,7 +175,7 @@ void TerminalBuffer::executeCSI(char final_char) {
   std::string seg;
   while (std::getline(ss, seg, ';')) {
     if (!seg.empty()) {
-      try { params.push_back(std::stoi(seg)); } catch (...) { params.push_back(0); }
+      try { params.push_back(std::stoi(seg)); } catch (const std::invalid_argument&) { params.push_back(0); } catch (const std::out_of_range&) { params.push_back(0); }
     } else params.push_back(0);
   }
   if (params.empty()) params.push_back(0);

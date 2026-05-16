@@ -3,6 +3,7 @@
 #include "core/ColorUtils.h"
 #include "config/ConfigLoader.h"
 #include <algorithm>
+#include <stdexcept>
 
 ConfigEditor::ConfigEditor(const Config& config, const std::string& configPath)
   : config_(config), config_path_(configPath) {
@@ -116,7 +117,7 @@ void ConfigEditor::confirmEdit() {
     auto& field = fields_[static_cast<size_t>(selected_)];
     if (field.type == Field::IntVal) {
       int val = 1;
-      try { val = std::stoi(edit_buffer_); } catch (...) {}
+      try { val = std::stoi(edit_buffer_); } catch (const std::invalid_argument&) { } catch (const std::out_of_range&) { }
       if (selected_ == 1) config_.dock.height = std::max(1, val);
       else if (selected_ == 4) config_.windows.default_width = std::max(20, val);
       else if (selected_ == 5) config_.windows.default_height = std::max(10, val);

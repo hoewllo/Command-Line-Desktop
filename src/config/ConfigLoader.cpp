@@ -5,6 +5,7 @@
 #include <cctype>
 #include <stack>
 #include <list>
+#include <stdexcept>
 #include <cstdio>
 
 static std::string trim(const std::string& s) {
@@ -49,7 +50,7 @@ struct YamlNode {
   int getInt(const std::string& key, int def = 0) const {
     auto s = getString(key, "");
     if (s.empty()) return def;
-    try { return std::stoi(s); } catch (...) { return def; }
+    try { return std::stoi(s); } catch (const std::invalid_argument&) { return def; } catch (const std::out_of_range&) { return def; }
   }
 
   bool getBool(const std::string& key, bool def = false) const {
@@ -125,8 +126,9 @@ static YamlNode parseYaml(const std::vector<std::string>& lines) {
     } else {
       auto colon = trimmed.find(':');
       if (colon == std::string::npos) {
-        fprintf(stderr, "YAML warning: skipping malformed line (no colon): %s\n", trimmed.c_str());
-        continue;
+        fprintf(stderr, "YAML error: malformed line (no colon) — aborting parse: %s\n", trimmed.c_str());
+        YamlNode empty;
+        return empty;
       }
 
       auto key = trim(trimmed.substr(0, colon));
@@ -202,7 +204,10 @@ Config ConfigLoader::load(const std::string& path) {
 
 void ConfigLoader::save(const std::string& path, const Config& config) {
   std::ofstream f(path);
-  if (!f.is_open()) return;
+  if (!f.is_open()) {
+    fprintf(stderr, "Error: could not open config file for writing: %s\n", path.c_str());
+    return;
+  }
 
   auto q = [](const std::string& s) -> std::string {
     if (s.find(' ') != std::string::npos || s.empty())
