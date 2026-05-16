@@ -9,7 +9,7 @@ namespace fs = std::filesystem;
 
 AppDetector::AppDetector() {}
 
-bool AppDetector::commandExists(const std::string& cmd) {
+static bool commandExistsInPath(const std::string& cmd) {
   if (cmd.empty()) return false;
   const char* path = std::getenv("PATH");
   if (!path) return false;
@@ -51,7 +51,7 @@ std::vector<AppConfig> AppDetector::scanPATH() {
   };
 
   for (const auto& cmd : known) {
-    if (commandExists(cmd)) {
+    if (commandExistsInPath(cmd)) {
       AppConfig app;
       app.name = cmd;
       app.command = cmd;
@@ -80,6 +80,7 @@ static std::vector<AppConfig> scanDesktopFilesImpl() {
       std::string line;
       AppConfig app;
       bool no_display = false;
+      std::string try_exec;
       while (std::getline(f, line)) {
         if (line.find("Name=") == 0 && app.name.empty())
           app.name = line.substr(5);
@@ -92,8 +93,16 @@ static std::vector<AppConfig> scanDesktopFilesImpl() {
           if (percent != std::string::npos)
             app.command = app.command.substr(0, percent);
         }
+        if (line.find("TryExec=") == 0) {
+          try_exec = line.substr(8);
+          auto space = try_exec.find(' ');
+          if (space != std::string::npos)
+            try_exec = try_exec.substr(0, space);
+        }
         if (line.find("NoDisplay=true") == 0) no_display = true;
       }
+      if (!try_exec.empty() && !commandExistsInPath(try_exec))
+        continue;
       if (!app.name.empty() && !no_display) {
         app.internal = false;
         apps.push_back(app);

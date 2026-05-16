@@ -20,6 +20,7 @@ public:
 
   std::string selectedCommand() const;
   std::string selectedName() const;
+  bool selectedIsInternal() const;
 
   std::function<void()> onLaunch;
   std::function<void()> onConfigClick;

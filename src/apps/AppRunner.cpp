@@ -194,7 +194,27 @@ void TerminalBuffer::executeCSI(char final_char) {
     case 'm': applySGR(params); break;
     case 's': saved_cx_ = cx_; saved_cy_ = cy_; break;
     case 'u': cx_ = saved_cx_; cy_ = saved_cy_; break;
-    case 'h': case 'l': break;
+    case 'h':
+      if (csi_private_ && !params.empty() && params[0] == 1049 && !alt_screen_) {
+        saved_grid_ = grid_;
+        saved_grid_rows_ = rows_;
+        grid_.clear();
+        for (int i = 0; i < rows_; ++i)
+          grid_.push_back(std::vector<TermCell>(cols_));
+        cx_ = cy_ = 0;
+        alt_screen_ = true;
+      }
+      break;
+    case 'l':
+      if (csi_private_ && !params.empty() && params[0] == 1049 && alt_screen_) {
+        if (!saved_grid_.empty()) {
+          grid_ = std::move(saved_grid_);
+          saved_grid_.clear();
+        }
+        cx_ = cy_ = 0;
+        alt_screen_ = false;
+      }
+      break;
     default: break;
   }
 }
@@ -239,18 +259,24 @@ void TerminalBuffer::resize(int cols, int rows) {
   cy_ = std::min(cy_, rows_ - 1);
 }
 
-void TerminalBuffer::draw(ftxui::Canvas& canvas, int x, int y, int w, int h, bool showCursor) {
+void TerminalBuffer::draw(ftxui::Canvas& canvas, int x, int y, int w, int h, bool showCursor, int scrollOffset) {
+  int totalGrid = (int)grid_.size();
+  int maxOffset = std::max(0, totalGrid - rows_);
+  scrollOffset = std::max(0, std::min(scrollOffset, maxOffset));
   int drawRows = std::min(h, rows_);
   int drawCols = std::min(w, cols_);
 
   for (int row = 0; row < drawRows; ++row) {
+    int gridIdx = totalGrid - rows_ - scrollOffset + row;
+    if (gridIdx < 0) gridIdx = 0;
+    if (gridIdx >= totalGrid) gridIdx = totalGrid - 1;
     int prev_bg_r = -1, prev_bg_g = -1, prev_bg_b = -1;
     int prev_fg_r = -1, prev_fg_g = -1, prev_fg_b = -1;
     std::string buf;
     int buf_start = 0;
 
     for (int col = 0; col < drawCols; ++col) {
-      auto& c = cell(col, row);
+      auto& c = grid_[gridIdx][std::max(0, std::min(cols_ - 1, col))];
       bool isCursor = (showCursor && col == cx_ && row == cy_);
       uint8_t fg_r = isCursor ? 0 : c.fg_r;
       uint8_t fg_g = isCursor ? 0 : c.fg_g;
@@ -333,8 +359,8 @@ void AppRunner::stop() {
 void AppRunner::resizePty() {
   if (master_fd_ < 0) return;
   struct winsize ws;
-  ws.ws_col = std::max(20, width_ - 2);
-  ws.ws_row = std::max(10, height_ - 2);
+  ws.ws_col = std::max(20, width() - 2);
+  ws.ws_row = std::max(10, height() - 2);
   ioctl(master_fd_, TIOCSWINSZ, &ws);
 }
 #endif
@@ -374,10 +400,10 @@ void AppRunner::readOutputPty() {
 #endif
 
 void AppRunner::draw(ftxui::Canvas& canvas) {
-  if (!visible_) return;
+  if (!visible()) return;
 
-  int termW = std::max(20, width_ - 2);
-  int termH = std::max(10, height_ - 2);
+  int termW = std::max(20, width() - 2);
+  int termH = std::max(10, height() - 2);
 
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -386,43 +412,52 @@ void AppRunner::draw(ftxui::Canvas& canvas) {
   }
 
 #ifndef _WIN32
-  resizePty();
+  if (termW != last_pty_w_ || termH != last_pty_h_) {
+    resizePty();
+    last_pty_w_ = termW;
+    last_pty_h_ = termH;
+  }
 #endif
 
-  canvas::fill(canvas, x_, y_, width_, height_, ftxui::Color::RGB(10, 10, 15));
+  canvas::fill(canvas, x(), y(), width(), height(), ftxui::Color::RGB(10, 10, 15));
 
+  int drawScroll = 0;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    term_.draw(canvas, x_ + 1, y_ + 1, termW, termH, running_);
+    bool alt = term_.inAltScreen();
+    drawScroll = (scroll_offset_ > 0 && !alt) ? scroll_offset_ : 0;
+    term_.draw(canvas, x() + 1, y() + 1, termW, termH, running_, drawScroll);
+  }
+
+  if (drawScroll > 0) {
+    canvas::write(canvas, x() + 1, y() + 1,
+      " [Scrollback]", ftxui::Color::RGB(255, 200, 0),
+      ftxui::Color::RGB(10, 10, 15));
   }
 
   if (!running_) {
-    canvas::write(canvas, x_ + 1, y_ + height_ - 1,
+    canvas::write(canvas, x() + 1, y() + height() - 1,
       " [Process exited]", ftxui::Color::RGB(255, 100, 100),
       ftxui::Color::RGB(10, 10, 15));
   }
 }
 
 bool AppRunner::handleEvent(ftxui::Event event) {
-  if (!visible_) return false;
-
-  if (event == ftxui::Event::ArrowUp) {
-    if (scroll_offset_ > 0) scroll_offset_--;
-    return true;
-  }
-  if (event == ftxui::Event::ArrowDown) {
-    scroll_offset_++;
-    return true;
-  }
+  if (!visible()) return false;
 
 #ifndef _WIN32
   if (running_ && master_fd_ >= 0) {
     if (event.is_character()) {
       auto ch = event.character();
-      if (!ch.empty()) write(master_fd_, ch.c_str(), ch.size());
+      if (!ch.empty()) {
+        if (ch == "\x11") return false;
+        write(master_fd_, ch.c_str(), ch.size());
+      }
       return true;
     }
+
     if (event == ftxui::Event::Return) {
+      scroll_offset_ = 0;
       write(master_fd_, "\n", 1);
       return true;
     }
@@ -433,6 +468,76 @@ bool AppRunner::handleEvent(ftxui::Event event) {
     }
     if (event == ftxui::Event::Tab) {
       write(master_fd_, "\t", 1);
+      return true;
+    }
+
+    if (event.input() == "\x03") {
+      write(master_fd_, "\x03", 1);
+      return true;
+    }
+    if (event.input() == "\x04") {
+      write(master_fd_, "\x04", 1);
+      return true;
+    }
+    if (event.input() == "\x1a") {
+      write(master_fd_, "\x1a", 1);
+      return true;
+    }
+
+    if (event == ftxui::Event::ArrowUp) {
+      write(master_fd_, "\x1b[A", 3);
+      return true;
+    }
+    if (event == ftxui::Event::ArrowDown) {
+      write(master_fd_, "\x1b[B", 3);
+      return true;
+    }
+    if (event == ftxui::Event::ArrowRight) {
+      write(master_fd_, "\x1b[C", 3);
+      return true;
+    }
+    if (event == ftxui::Event::ArrowLeft) {
+      write(master_fd_, "\x1b[D", 3);
+      return true;
+    }
+
+    if (event == ftxui::Event::F1) {
+      write(master_fd_, "\x1bOP", 3);
+      return true;
+    }
+    if (event == ftxui::Event::F2) {
+      write(master_fd_, "\x1bOQ", 3);
+      return true;
+    }
+    if (event == ftxui::Event::F3) {
+      write(master_fd_, "\x1bOR", 3);
+      return true;
+    }
+    if (event == ftxui::Event::F4) {
+      write(master_fd_, "\x1bOS", 3);
+      return true;
+    }
+
+    if (event == ftxui::Event::PageUp) {
+      scroll_offset_ += term_.visibleRows() / 2;
+      if (scroll_offset_ > term_.scrollbackRows() - term_.visibleRows())
+        scroll_offset_ = term_.scrollbackRows() - term_.visibleRows();
+      if (scroll_offset_ < 0) scroll_offset_ = 0;
+      return true;
+    }
+    if (event == ftxui::Event::PageDown) {
+      scroll_offset_ -= term_.visibleRows() / 2;
+      if (scroll_offset_ < 0) scroll_offset_ = 0;
+      return true;
+    }
+
+    if (event == ftxui::Event::Home) {
+      scroll_offset_ = 0;
+      return true;
+    }
+    if (event == ftxui::Event::End) {
+      scroll_offset_ = term_.scrollbackRows() - term_.visibleRows();
+      if (scroll_offset_ < 0) scroll_offset_ = 0;
       return true;
     }
   }

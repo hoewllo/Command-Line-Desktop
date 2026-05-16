@@ -1,31 +1,23 @@
 #include "Dock.h"
 #include "WindowManager.h"
+#include "WindowFrame.h"
 #include "CanvasHelpers.h"
+#include "core/ColorUtils.h"
 #include <algorithm>
 #include <ctime>
 
+#ifdef _WIN32
+#define localtime_r(a, b) localtime_s(b, a)
+#endif
+
 Dock::Dock() {}
 
-ftxui::Color Dock::parseHex(const std::string& hex, ftxui::Color fallback) {
-  std::string h = hex;
-  if (!h.empty() && h[0] == '#') h = h.substr(1);
-  if (h.size() >= 6) {
-    try {
-      auto r = std::stoi(h.substr(0, 2), nullptr, 16);
-      auto g = std::stoi(h.substr(2, 2), nullptr, 16);
-      auto b = std::stoi(h.substr(4, 2), nullptr, 16);
-      return ftxui::Color::RGB(r, g, b);
-    } catch (...) {}
-  }
-  return fallback;
-}
-
 void Dock::setBackgroundColor(const std::string& hex) {
-  bgColor_ = parseHex(hex, bgColor_);
+  bgColor_ = color::parseHex(hex, bgColor_);
 }
 
 void Dock::setTextColor(const std::string& hex) {
-  textColor_ = parseHex(hex, textColor_);
+  textColor_ = color::parseHex(hex, textColor_);
 }
 
 void Dock::removeApp(const std::string& name) {
@@ -36,7 +28,7 @@ void Dock::removeApp(const std::string& name) {
 }
 
 void Dock::draw(ftxui::Canvas& canvas) {
-  if (!visible_) return;
+  if (!visible()) return;
 
   auto accentColor = ftxui::Color::RGB(233, 69, 96);
   auto runningColor = ftxui::Color::RGB(0, 255, 128);
@@ -45,7 +37,6 @@ void Dock::draw(ftxui::Canvas& canvas) {
   int screenH = canvas.height() / 4;
 
   int dockY = screenH - height_;
-  setPos(0, dockY, screenW, height_);
 
   canvas::fill(canvas, 0, dockY, screenW, height_, bgColor_);
 
@@ -58,17 +49,26 @@ void Dock::draw(ftxui::Canvas& canvas) {
   canvas::write(canvas, 11, dockY, "\u2502", textColor_, bgColor_);
 
   int x = 14;
+  int totalW = 0;
+  for (const auto& app : apps_)
+    totalW += app.name.size() + 3;
+  bool truncated = false;
   for (const auto& app : apps_) {
-    if (x + (int)app.name.size() + 3 >= screenW) break;
+    int nextX = x + (int)app.name.size() + 3;
+    if (nextX >= screenW - 7) { truncated = true; break; }
     auto fg = app.is_running ? runningColor : textColor_;
     canvas::write(canvas, x, dockY, " " + app.name + " ", fg, bgColor_);
-    x += app.name.size() + 3;
+    x = nextX;
+  }
+  if (truncated) {
+    canvas::write(canvas, x, dockY, ">>", textColor_, bgColor_);
   }
 
   std::time_t t = std::time(nullptr);
-  std::tm* tm = std::localtime(&t);
+  std::tm tm_result;
+  localtime_r(&t, &tm_result);
   char timeBuf[16];
-  std::strftime(timeBuf, sizeof(timeBuf), "%H:%M", tm);
+  std::strftime(timeBuf, sizeof(timeBuf), "%H:%M", &tm_result);
 
   if (screenW > 20) {
     canvas::write(canvas, screenW - 6, dockY, std::string(" ") + timeBuf + " ",
@@ -77,7 +77,7 @@ void Dock::draw(ftxui::Canvas& canvas) {
 }
 
 bool Dock::handleEvent(ftxui::Event event) {
-  if (!visible_) return false;
+  if (!visible()) return false;
 
   if (event.is_mouse()) {
     auto& mouse = event.mouse();
@@ -95,8 +95,19 @@ bool Dock::handleEvent(ftxui::Event event) {
         int appX = 14;
         for (int j = 0; j < i; ++j)
           appX += apps_[j].name.size() + 3;
-        if (mouse.x >= appX && mouse.x < appX + (int)apps_[i].name.size() + 2)
+        if (mouse.x >= appX && mouse.x < appX + (int)apps_[i].name.size() + 2) {
+          if (wm_) {
+            for (auto* win : wm_->windows()) {
+              if (win->title() == apps_[i].name) {
+                if (win->isMinimized())
+                  win->restore();
+                wm_->focusWindow(win);
+                break;
+              }
+            }
+          }
           return true;
+        }
       }
     }
   }

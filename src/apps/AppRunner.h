@@ -18,14 +18,20 @@ public:
   TerminalBuffer(int cols = 80, int rows = 24);
   void write(const char* data, int len);
   void resize(int cols, int rows);
-  void draw(ftxui::Canvas& canvas, int x, int y, int w, int h, bool showCursor);
+  void draw(ftxui::Canvas& canvas, int x, int y, int w, int h, bool showCursor, int scrollOffset = 0);
   int visibleRows() const { return rows_; }
   int cols() const { return cols_; }
+  int scrollbackRows() const { return (int)grid_.size(); }
+  bool inAltScreen() const { return alt_screen_; }
+  void onAltScreenChange(bool alt);
 
 private:
   int cols_ = 80, rows_ = 24;
   int scrollback_max_ = 2000;
   std::deque<std::vector<TermCell>> grid_;
+  std::deque<std::vector<TermCell>> saved_grid_;
+  int saved_grid_rows_ = 0;
+  bool alt_screen_ = false;
   int cx_ = 0, cy_ = 0;
   int saved_cx_ = 0, saved_cy_ = 0;
   uint8_t cur_fg_r = 200, cur_fg_g = 200, cur_fg_b = 200;
@@ -91,4 +97,5 @@ private:
   std::mutex mutex_;
   int scroll_offset_ = 0;
   bool scroll_locked_ = false;
+  int last_pty_w_ = 0, last_pty_h_ = 0;
 };

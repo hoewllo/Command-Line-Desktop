@@ -9,7 +9,4 @@ public:
   std::vector<AppConfig> scanPATH();
   std::vector<AppConfig> scanDesktopFiles();
   std::vector<AppConfig> scanAll();
-
-private:
-  bool commandExists(const std::string& cmd);
 };

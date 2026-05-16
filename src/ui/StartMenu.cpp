@@ -41,6 +41,12 @@ std::string StartMenu::selectedName() const {
   return "";
 }
 
+bool StartMenu::selectedIsInternal() const {
+  if (selected_idx_ >= 0 && selected_idx_ < (int)filteredApps_.size())
+    return filteredApps_[selected_idx_].internal;
+  return false;
+}
+
 int StartMenu::hitTest(int mx, int my) const {
   if (!open_) return -1;
   if (mx < menuX_ || mx >= menuX_ + menuW_) return -1;
@@ -55,10 +61,10 @@ int StartMenu::hitTest(int mx, int my) const {
 }
 
 void StartMenu::draw(ftxui::Canvas& canvas) {
-  if (!open_ || !visible_) return;
+  if (!open_ || !visible()) return;
 
   int total = totalEntries();
-  menuW_ = std::min(width_, 35);
+  menuW_ = std::min(width(), 35);
   int maxItems = std::min(total + 2, 22);
   menuH_ = maxItems + 3;
   menuX_ = 0;
@@ -92,6 +98,12 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
   int itemY = menuY_ + 3;
   int visItems = maxItems;
   int shown = 0;
+
+  if (filteredApps_.empty() && shown < visItems) {
+    canvas::write(canvas, menuX_ + 2, itemY,
+      "  (no results)", ftxui::Color::RGB(150, 150, 150), bg);
+    itemY++; shown++;
+  }
 
   for (int i = 0; i < (int)filteredApps_.size() && shown < visItems; ++i, ++shown) {
     auto& app = filteredApps_[i];

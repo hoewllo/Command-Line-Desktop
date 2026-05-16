@@ -27,6 +27,7 @@ public:
 private:
   std::vector<std::unique_ptr<WindowFrame>> windows_;
   int focused_idx_ = -1;
+  int prev_focused_idx_ = -1;
   bool dragging_ = false;
   int dragOffsetX_ = 0, dragOffsetY_ = 0;
   bool resizing_ = false;

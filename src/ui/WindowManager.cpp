@@ -9,21 +9,21 @@ void WindowManager::addWindow(std::unique_ptr<WindowFrame> window) {
   if (!window) return;
 
   auto dim = ftxui::Terminal::Size();
-  int w = std::min(window->width_ > 0 ? window->width_ : 60, dim.dimx - 10);
-  int h = std::min(window->height_ > 0 ? window->height_ : 30, dim.dimy - 10);
+  int w = std::min(window->width() > 0 ? window->width() : 60, dim.dimx - 10);
+  int h = std::min(window->height() > 0 ? window->height() : 30, dim.dimy - 10);
   int x = (dim.dimx - w) / 2;
   int y = (dim.dimy - h) / 4;
   if (focused_idx_ >= 0 && focused_idx_ < (int)windows_.size()) {
-    x = windows_[focused_idx_]->x_ + 3;
-    y = windows_[focused_idx_]->y_ + 2;
+    x = windows_[focused_idx_]->x() + 3;
+    y = windows_[focused_idx_]->y() + 2;
   }
   x = std::max(0, std::min(x, dim.dimx - w - 5));
   y = std::max(0, std::min(y, dim.dimy - h - 5));
 
   window->setPos(x, y, w, h);
-  window->focused_ = true;
+  window->setFocused(true);
 
-  for (auto& w : windows_) w->focused_ = false;
+  for (auto& w : windows_) w->setFocused(false);
   windows_.push_back(std::move(window));
   focused_idx_ = (int)windows_.size() - 1;
 }
@@ -32,9 +32,15 @@ void WindowManager::removeWindow(WindowFrame* window) {
   for (int i = 0; i < (int)windows_.size(); ++i) {
     if (windows_[i].get() == window) {
       windows_.erase(windows_.begin() + i);
-      focused_idx_ = (int)windows_.size() - 1;
-      if (focused_idx_ >= 0)
-        windows_[focused_idx_]->focused_ = true;
+      if (focused_idx_ == i) {
+        focused_idx_ = (prev_focused_idx_ >= 0 && prev_focused_idx_ < (int)windows_.size())
+          ? prev_focused_idx_ : (int)windows_.size() - 1;
+      } else if (focused_idx_ > i) {
+        focused_idx_--;
+      }
+      prev_focused_idx_ = -1;
+      if (focused_idx_ >= 0 && focused_idx_ < (int)windows_.size())
+        windows_[focused_idx_]->setFocused(true);
       return;
     }
   }
@@ -43,23 +49,27 @@ void WindowManager::removeWindow(WindowFrame* window) {
 void WindowManager::closeFocused() {
   if (focused_idx_ >= 0 && focused_idx_ < (int)windows_.size()) {
     windows_.erase(windows_.begin() + focused_idx_);
-    focused_idx_ = (int)windows_.size() - 1;
-    if (focused_idx_ >= 0)
-      windows_[focused_idx_]->focused_ = true;
+    focused_idx_ = (prev_focused_idx_ >= 0 && prev_focused_idx_ < (int)windows_.size())
+      ? prev_focused_idx_ : (int)windows_.size() - 1;
+    prev_focused_idx_ = -1;
+    if (focused_idx_ >= 0 && focused_idx_ < (int)windows_.size())
+      windows_[focused_idx_]->setFocused(true);
   }
 }
 
 void WindowManager::cycleFocus() {
   if (windows_.empty()) return;
+  prev_focused_idx_ = focused_idx_;
   if (focused_idx_ >= 0)
-    windows_[focused_idx_]->focused_ = false;
+    windows_[focused_idx_]->setFocused(false);
   focused_idx_ = (focused_idx_ + 1) % windows_.size();
-  windows_[focused_idx_]->focused_ = true;
+  windows_[focused_idx_]->setFocused(true);
 }
 
 void WindowManager::focusWindow(WindowFrame* window) {
+  prev_focused_idx_ = focused_idx_;
   for (int i = 0; i < (int)windows_.size(); ++i) {
-    windows_[i]->focused_ = (windows_[i].get() == window);
+    windows_[i]->setFocused(windows_[i].get() == window);
     if (windows_[i].get() == window) focused_idx_ = i;
   }
 }
@@ -77,7 +87,7 @@ std::vector<WindowFrame*> WindowManager::windows() {
 }
 
 void WindowManager::draw(ftxui::Canvas& canvas) {
-  if (!visible_ || windows_.empty()) return;
+  if (!visible() || windows_.empty()) return;
 
   for (auto& win : windows_) {
     win->draw(canvas);
@@ -98,10 +108,10 @@ void WindowManager::handleDrag(ftxui::Event event) {
     auto dim = ftxui::Terminal::Size();
     int newX = mouse.x - dragOffsetX_;
     int newY = mouse.y - dragOffsetY_;
-    newX = std::max(0, std::min(newX, dim.dimx - dragWindow_->width_));
-    newY = std::max(0, std::min(newY, dim.dimy - dragWindow_->height_));
-    dragWindow_->x_ = newX;
-    dragWindow_->y_ = newY;
+    newX = std::max(0, std::min(newX, dim.dimx - dragWindow_->width()));
+    newY = std::max(0, std::min(newY, dim.dimy - dragWindow_->height()));
+    dragWindow_->setX(newX);
+    dragWindow_->setY(newY);
   }
 }
 
@@ -117,23 +127,18 @@ void WindowManager::handleResize(ftxui::Event event) {
 
   if (resizing_ && dragWindow_) {
     auto dim = ftxui::Terminal::Size();
-    int newW = mouse.x - dragWindow_->x_ + 1;
-    int newH = mouse.y - dragWindow_->y_ + 1;
-    dragWindow_->width_ = std::max(20, std::min(newW, dim.dimx - dragWindow_->x_));
-    dragWindow_->height_ = std::max(10, std::min(newH, dim.dimy - dragWindow_->y_));
+    int newW = mouse.x - dragWindow_->x() + 1;
+    int newH = mouse.y - dragWindow_->y() + 1;
+    dragWindow_->setWidth(std::max(20, std::min(newW, dim.dimx - dragWindow_->x())));
+    dragWindow_->setHeight(std::max(10, std::min(newH, dim.dimy - dragWindow_->y())));
   }
 }
 
 bool WindowManager::handleEvent(ftxui::Event event) {
-  if (!visible_) return false;
+  if (!visible()) return false;
 
   if (resizing_) { handleResize(event); return true; }
   if (dragging_) { handleDrag(event); return true; }
-
-  if (event == ftxui::Event::F4) {
-    closeFocused();
-    return true;
-  }
 
   if (event == ftxui::Event::Tab || event == ftxui::Event::TabReverse) {
     if (windows_.size() > 1) {
@@ -148,33 +153,41 @@ bool WindowManager::handleEvent(ftxui::Event event) {
     if (mouse.motion == ftxui::Mouse::Pressed && mouse.button == ftxui::Mouse::Left) {
       for (int i = (int)windows_.size() - 1; i >= 0; --i) {
         auto* win = windows_[i].get();
-        if (mouse.x >= win->x_ && mouse.x < win->x_ + win->width_ &&
-            mouse.y >= win->y_ && mouse.y < win->y_ + win->height_) {
+        if (mouse.x >= win->x() && mouse.x < win->x() + win->width() &&
+            mouse.y >= win->y() && mouse.y < win->y() + win->height()) {
 
-          for (auto& w : windows_) w->focused_ = false;
-          win->focused_ = true;
+          for (auto& w : windows_) w->setFocused(false);
+          win->setFocused(true);
           focused_idx_ = i;
 
-          bool onX = (mouse.y >= win->y_ && mouse.y < win->y_ + 2 &&
-                      mouse.x >= win->x_ + win->width_ - 4 &&
-                      mouse.x < win->x_ + win->width_);
+          bool onX = (mouse.y >= win->y() && mouse.y < win->y() + 2 &&
+                      mouse.x >= win->x() + win->width() - 4 &&
+                      mouse.x < win->x() + win->width());
           if (onX) {
             closeFocused();
             return true;
           }
 
-          if (mouse.y >= win->y_ && mouse.y < win->y_ + 2 &&
-              mouse.x < win->x_ + win->width_ - 4) {
-            dragging_ = true;
-            dragWindow_ = win;
-            dragOffsetX_ = mouse.x - win->x_;
-            dragOffsetY_ = mouse.y - win->y_;
+          bool onMin = (mouse.y >= win->y() && mouse.y < win->y() + 2 &&
+                        mouse.x >= win->x() + win->width() - 7 &&
+                        mouse.x < win->x() + win->width() - 4);
+          if (onMin) {
+            win->minimize();
+            return true;
           }
 
-          if (mouse.x >= win->x_ + win->width_ - 3 ||
-              mouse.x <= win->x_ + 3 ||
-              mouse.y >= win->y_ + win->height_ - 3 ||
-              mouse.y <= win->y_ + 3) {
+          if (mouse.y >= win->y() && mouse.y < win->y() + 2 &&
+              mouse.x < win->x() + win->width() - 7) {
+            dragging_ = true;
+            dragWindow_ = win;
+            dragOffsetX_ = mouse.x - win->x();
+            dragOffsetY_ = mouse.y - win->y();
+          }
+
+          if (mouse.x >= win->x() + win->width() - 3 ||
+              mouse.x <= win->x() + 3 ||
+              mouse.y >= win->y() + win->height() - 3 ||
+              mouse.y <= win->y() + 3) {
             resizing_ = true;
             dragWindow_ = win;
           }

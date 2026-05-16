@@ -45,5 +45,4 @@ private:
   ftxui::Color bgColor_{ftxui::Color::RGB(22, 33, 62)};
   ftxui::Color textColor_{ftxui::Color::RGB(224, 224, 224)};
 
-  ftxui::Color parseHex(const std::string& hex, ftxui::Color fallback);
 };

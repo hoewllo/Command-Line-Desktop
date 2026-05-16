@@ -26,10 +26,12 @@ public:
   void setConfigPath(const std::string& path) { config_path_ = path; }
 
 private:
-  void launchApp(const std::string& name, const std::string& command);
+  void launchApp(const std::string& name, const std::string& command, bool internal = false);
   void openConfigEditor();
   void removeClosedWindowsFromDock();
   void loadConfigFromFile();
+  void openContextMenu(int mx, int my);
+  void closeContextMenu();
 
   std::shared_ptr<WindowManager> wm_;
   std::shared_ptr<Dock> dock_;
@@ -38,4 +40,9 @@ private:
   ftxui::Color bgColor_{ftxui::Color::RGB(26, 26, 46)};
   std::string config_path_ = "config.yaml";
   Config current_config_;
+
+  bool ctx_open_ = false;
+  int ctx_x_ = 0, ctx_y_ = 0;
+  int ctx_sel_ = 0;
+  std::vector<std::string> ctx_items_;
 };

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <stack>
+#include <cstdio>
 
 static std::string trim(const std::string& s) {
   auto start = s.find_first_not_of(" \t\r\n");
@@ -126,7 +127,10 @@ static YamlNode parseYaml(const std::vector<std::string>& lines) {
       }
     } else {
       auto colon = trimmed.find(':');
-      if (colon == std::string::npos) continue;
+      if (colon == std::string::npos) {
+        fprintf(stderr, "YAML warning: skipping malformed line (no colon): %s\n", trimmed.c_str());
+        continue;
+      }
 
       auto key = trim(trimmed.substr(0, colon));
       auto rest = trim(trimmed.substr(colon + 1));
@@ -155,7 +159,10 @@ static YamlNode parseYaml(const std::vector<std::string>& lines) {
 Config ConfigLoader::load(const std::string& path) {
   Config config;
   std::ifstream file(path);
-  if (!file.is_open()) return config;
+  if (!file.is_open()) {
+    fprintf(stderr, "Warning: could not open config file: %s\n", path.c_str());
+    return config;
+  }
 
   std::vector<std::string> lines;
   std::string line;

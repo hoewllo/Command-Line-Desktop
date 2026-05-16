@@ -11,6 +11,7 @@ public:
   void draw(ftxui::Canvas& canvas) override;
   bool handleEvent(ftxui::Event event) override;
   std::string title() const override;
+  void setPos(int x, int y, int w, int h) override;
 
   Component* content() { return content_.get(); }
   const Component* content() const { return content_.get(); }
@@ -32,6 +33,4 @@ private:
   ftxui::Color titleColor_{ftxui::Color::RGB(233, 69, 96)};
 
   static constexpr int titlebar_height_ = 2;
-
-  ftxui::Color parseHex(const std::string& hex, ftxui::Color fallback);
 };
