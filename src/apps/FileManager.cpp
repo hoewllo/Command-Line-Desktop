@@ -68,7 +68,6 @@ void FileManager::draw(ftxui::Canvas& canvas) {
       canvas::write(canvas, list_x + 1, line_y,
         "> " + name, ftxui::Color::White, selectedBg);
     } else {
-      std::string prefix = fs::is_directory(entry) ? "D " : "  ";
       canvas::write(canvas, list_x + 1, line_y,
         "  " + name, fg, bg);
     }

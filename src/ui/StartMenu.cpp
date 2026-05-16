@@ -23,6 +23,8 @@ void StartMenu::updateFilter() {
   }
   if (selected_idx_ >= totalEntries())
     selected_idx_ = std::max(0, totalEntries() - 1);
+  if (filteredApps_.empty() && !search_.empty())
+    selected_idx_ = static_cast<int>(filteredApps_.size()) + ENTRY_EXIT;
 }
 
 int StartMenu::totalEntries() const {

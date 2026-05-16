@@ -24,6 +24,7 @@ public:
 
   void setBorderColor(const std::string& hex);
   void setTitleColor(const std::string& hex);
+  void setBgColor(const std::string& hex);
 
 private:
   std::unique_ptr<Component> content_;
@@ -31,6 +32,7 @@ private:
   bool minimized_ = false;
   ftxui::Color borderColor_{ftxui::Color::RGB(15, 52, 96)};
   ftxui::Color titleColor_{ftxui::Color::RGB(233, 69, 96)};
+  ftxui::Color bgColor_{ftxui::Color::RGB(22, 33, 62)};
 
   static constexpr int titlebar_height_ = 2;
   static constexpr int close_btn_w_ = 4;

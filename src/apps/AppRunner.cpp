@@ -107,7 +107,6 @@ void TerminalBuffer::insertLines(int n) {
   for (int i = 0; i < n && cy_ < rows_ - 1; ++i) {
     grid_.insert(grid_.end() - rows_ + cy_, std::vector<TermCell>(static_cast<size_t>(cols_)));
     if (static_cast<int>(grid_.size()) > scrollback_max_) grid_.pop_front();
-    rows_ = std::min(rows_, static_cast<int>(grid_.size()));
   }
 }
 void TerminalBuffer::deleteLines(int n) {
@@ -360,12 +359,15 @@ void AppRunner::start() {
 void AppRunner::stop() {
   running_ = false;
 #ifndef _WIN32
+  if (child_pid_ > 0) {
+    kill(child_pid_, SIGTERM);
+  }
   if (wake_pipe_[1] >= 0) {
     char c = 1;
     write(wake_pipe_[1], &c, 1);
   }
+  if (worker_.joinable()) worker_.join();
   if (child_pid_ > 0) {
-    kill(child_pid_, SIGTERM);
     int status;
     waitpid(child_pid_, &status, WNOHANG);
     child_pid_ = -1;
@@ -373,8 +375,9 @@ void AppRunner::stop() {
   if (master_fd_ >= 0) { close(master_fd_); master_fd_ = -1; }
   if (wake_pipe_[0] >= 0) { close(wake_pipe_[0]); wake_pipe_[0] = -1; }
   if (wake_pipe_[1] >= 0) { close(wake_pipe_[1]); wake_pipe_[1] = -1; }
-#endif
+#else
   if (worker_.joinable()) worker_.join();
+#endif
 }
 
 #ifndef _WIN32
@@ -392,8 +395,8 @@ void AppRunner::readOutput() {
   FILE* fp = POPEN(command_.c_str(), "r");
   if (!fp) { running_ = false; return; }
   char buf[4096];
-  std::lock_guard<std::mutex> lock(mutex_);
   while (running_ && fgets(buf, sizeof(buf), fp)) {
+    std::lock_guard<std::mutex> lock(mutex_);
     term_.write(buf, strlen(buf));
   }
   PCLOSE(fp);

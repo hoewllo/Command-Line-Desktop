@@ -23,7 +23,7 @@ void WindowManager::addWindow(std::unique_ptr<WindowFrame> window) {
   window->setPos(x, y, w, h);
   window->setFocused(true);
 
-          for (auto& win : windows_) win->setFocused(false);
+  for (auto& win : windows_) win->setFocused(false);
   windows_.push_back(std::move(window));
   focused_idx_ = static_cast<int>(windows_.size()) - 1;
 }
@@ -151,8 +151,8 @@ void WindowManager::handleResize(ftxui::Event event) {
 bool WindowManager::handleEvent(ftxui::Event event) {
   if (!visible()) return false;
 
-  if (resizing_) { handleResize(event); return true; }
-  if (dragging_) { handleDrag(event); return true; }
+  if (resizing_ && event.is_mouse()) { handleResize(event); return true; }
+  if (dragging_ && event.is_mouse()) { handleDrag(event); return true; }
 
   if (event == ftxui::Event::Tab) {
     if (windows_.size() > 1) {

@@ -29,11 +29,15 @@ void WindowFrame::setTitleColor(const std::string& hex) {
   titleColor_ = color::parseHex(hex, titleColor_);
 }
 
+void WindowFrame::setBgColor(const std::string& hex) {
+  bgColor_ = color::parseHex(hex, bgColor_);
+}
+
 void WindowFrame::draw(ftxui::Canvas& canvas) {
   if (!visible() || minimized_) return;
 
   auto titleFg = ftxui::Color::RGB(255, 255, 255);
-  auto bg = ftxui::Color::RGB(22, 33, 62);
+  auto bg = bgColor_;
 
   canvas::fill(canvas, x(), y(), width(), titlebar_height_, titleColor_);
   canvas::fill(canvas, x(), y() + titlebar_height_, width(), height() - titlebar_height_, bg);

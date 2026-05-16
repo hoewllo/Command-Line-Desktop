@@ -77,7 +77,10 @@ void Desktop::openConfigEditor() {
   auto frame = std::make_unique<WindowFrame>(std::move(editor));
   frame->setBorderColor(current_config_.windows.border_color);
   frame->setTitleColor(current_config_.windows.title_color);
-  frame->setPos(5, 3, 50, 22);
+  frame->setBgColor(current_config_.dock.background_color);
+  frame->setPos(5, 3,
+    current_config_.windows.default_width,
+    current_config_.windows.default_height);
   wm_->addWindow(std::move(frame));
 }
 
@@ -100,27 +103,32 @@ void Desktop::launchApp(const std::string& name, const std::string& command, boo
   auto frame = std::make_unique<WindowFrame>(std::move(content));
   frame->setBorderColor(current_config_.windows.border_color);
   frame->setTitleColor(current_config_.windows.title_color);
+  frame->setBgColor(current_config_.dock.background_color);
   wm_->addWindow(std::move(frame));
 
-  DockApp dapp;
-  dapp.name = name;
-  dapp.command = command;
-  dapp.is_running = true;
-  dock_->addApp(dapp);
+  bool alreadyInDock = false;
+  for (const auto& a : dock_->apps()) {
+    if (a.name == name) { alreadyInDock = true; break; }
+  }
+  if (!alreadyInDock) {
+    DockApp dapp;
+    dapp.name = name;
+    dapp.command = command;
+    dapp.is_running = true;
+    dock_->addApp(dapp);
+  }
 }
 
 void Desktop::removeClosedWindowsFromDock() {
   auto wins = wm_->windows();
-  std::vector<bool> consumed(wins.size(), false);
 
   std::vector<DockApp> updated;
   for (auto& app : dock_->apps()) {
-    for (size_t i = 0; i < wins.size(); ++i) {
-      if (!consumed[i] && wins[i]->title() == app.name) {
-        consumed[i] = true;
-        updated.push_back(app);
-        break;
-      }
+    auto it = std::find_if(wins.begin(), wins.end(),
+      [&](WindowFrame* w) { return w->title() == app.name; });
+    if (it != wins.end()) {
+      updated.push_back(app);
+      wins.erase(it);
     }
   }
   dock_->setApps(updated);
@@ -266,12 +274,6 @@ bool Desktop::OnEvent(ftxui::Event event) {
 
   if (wm_ && wm_->handleEvent(event))
     return true;
-
-  if (event.input() == "\x1b") {
-    wm_->closeFocused();
-    removeClosedWindowsFromDock();
-    return true;
-  }
 
   if (event.is_mouse() && event.mouse().button == ftxui::Mouse::Right &&
       event.mouse().motion == ftxui::Mouse::Pressed) {

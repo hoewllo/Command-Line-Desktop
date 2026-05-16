@@ -9,7 +9,7 @@ namespace canvas {
 inline void fill(ftxui::Canvas& c, int x, int y, int w, int h, ftxui::Color bg) {
   for (int row = y; row < y + h; ++row) {
     if (row * 4 >= c.height()) break;
-    int len = std::min(w, (c.width() - x * 2) / 2);
+    int len = std::min(w, (c.width() - x * 2 + 1) / 2);
     if (len <= 0) break;
     c.DrawText(x * 2, row * 4, std::string(static_cast<size_t>(len), ' '),
       [bg](ftxui::Pixel& p) { p.background_color = bg; });
