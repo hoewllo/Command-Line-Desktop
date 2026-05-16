@@ -1,13 +1,16 @@
 #pragma once
 #include <memory>
 #include <functional>
+#include <vector>
 #include <ftxui/component/component_base.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/screen/color.hpp>
+#include "Layer.h"
 #include "config/ConfigLoader.h"
 
 class WindowManager;
-class Dock;
+class WorkspaceManager;
+class Panel;
 class StartMenu;
 
 struct DesktopIcon {
@@ -26,8 +29,9 @@ public:
   ftxui::Element Render() override;
   bool OnEvent(ftxui::Event event) override;
 
-  WindowManager* windowManager() { return wm_.get(); }
-  Dock* dock() { return dock_.get(); }
+  WindowManager* currentWM();
+  WorkspaceManager* workspaceManager() { return ws_mgr_.get(); }
+  Panel* panel() { return panel_.get(); }
   StartMenu* startMenu() { return menu_.get(); }
 
   void loadConfig(const Config& config);
@@ -37,7 +41,6 @@ public:
 private:
   void launchApp(const std::string& name, const std::string& command, bool internal = false);
   void openConfigEditor();
-  void removeClosedWindowsFromDock();
   void loadConfigFromFile();
   void openContextMenu(int mx, int my);
   void closeContextMenu();
@@ -46,9 +49,14 @@ private:
   void drawWallpaper(ftxui::Canvas& c, int w, int h);
   void drawDesktopIcons(ftxui::Canvas& c);
   void drawSwitcher(ftxui::Canvas& c, int sw, int sh);
+  void syncPanelWM();
 
-  std::shared_ptr<WindowManager> wm_;
-  std::shared_ptr<Dock> dock_;
+  Compositor compositor_;
+  void setupCompositor();
+  void rebuildCompositor();
+
+  std::shared_ptr<WorkspaceManager> ws_mgr_;
+  std::shared_ptr<Panel> panel_;
   std::shared_ptr<StartMenu> menu_;
   ftxui::ScreenInteractive* screen_ = nullptr;
   ftxui::Color bgColor_{ftxui::Color::RGB(26, 26, 46)};

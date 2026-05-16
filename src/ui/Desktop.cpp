@@ -1,8 +1,9 @@
 #include "Desktop.h"
 #include "WindowManager.h"
 #include "WindowFrame.h"
-#include "Dock.h"
+#include "Panel.h"
 #include "StartMenu.h"
+#include "WorkspaceManager.h"
 #include "CanvasHelpers.h"
 #include "core/ColorUtils.h"
 #include "config/ConfigLoader.h"
@@ -15,40 +16,84 @@
 #include <stdexcept>
 
 Desktop::Desktop() {
-  wm_ = std::make_shared<WindowManager>();
-  dock_ = std::make_shared<Dock>();
+  ws_mgr_ = std::make_shared<WorkspaceManager>(4);
+  panel_ = std::make_shared<Panel>();
   menu_ = std::make_shared<StartMenu>();
 
-  dock_->setDockHeight(2);
-  dock_->setWindowManager(wm_.get());
+  panel_->setPanelHeight(2);
+  syncPanelWM();
   menu_->setDockHeight(2);
 
-  wm_->onWindowClosed = [this]() {
-    removeClosedWindowsFromDock();
+  // Forward onWindowClosed from all workspaces
+  auto onWinClosed = [this]() {
+    syncPanelWM();
   };
+  for (int i = 0; i < ws_mgr_->count(); ++i) {
+    auto* wm = ws_mgr_->getWM(i);
+    if (wm) wm->onWindowClosed = onWinClosed;
+  }
 
-  dock_->onStartClick = [this]() { menu_->toggle(); };
-
-  menu_->onLaunch = [this]() {
-    auto cmd = menu_->selectedCommand();
-    auto name = menu_->selectedName();
-    auto internal = menu_->selectedIsInternal();
-    if (!name.empty()) launchApp(name, cmd, internal);
+  ws_mgr_->onWorkspaceChanged = [this](int idx) {
+    if (panel_) {
+      panel_->setWorkspace(idx, ws_mgr_->count());
+      syncPanelWM();
+    }
   };
+  // Initialize workspace indicator
+  if (panel_) panel_->setWorkspace(0, ws_mgr_->count());
 
-  menu_->onConfigClick = [this]() {
-    openConfigEditor();
-  };
+  setupCompositor();
+}
 
-  menu_->onExitClick = [this]() {
-    if (screen_) screen_->Exit();
-  };
+void Desktop::setupCompositor() {
+  compositor_.addLayer(std::make_unique<SimpleLayer>(
+    "wallpaper", [this](ftxui::Canvas& c) {
+      auto dim = ftxui::Terminal::Size();
+      drawWallpaper(c, dim.dimx, dim.dimy);
+    }), 0);
+
+  compositor_.addLayer(std::make_unique<SimpleLayer>(
+    "icons", [this](ftxui::Canvas& c) {
+      if (desktop_icons_.empty()) populateDesktopIcons();
+      drawDesktopIcons(c);
+    }), 10);
+
+  compositor_.addLayer(std::make_unique<SimpleLayer>(
+    "windows", [this](ftxui::Canvas& c) {
+      auto* wm = currentWM();
+      if (wm) wm->draw(c);
+    }), 20);
+
+  compositor_.addLayer(std::make_unique<SimpleLayer>(
+    "menu", [this](ftxui::Canvas& c) {
+      if (menu_ && menu_->isOpen()) menu_->draw(c);
+    }), 30);
+
+  compositor_.addLayer(std::make_unique<SimpleLayer>(
+    "panel", [this](ftxui::Canvas& c) {
+      if (panel_) panel_->draw(c);
+    }), 50);
+
+  compositor_.addLayer(std::make_unique<SimpleLayer>(
+    "switcher", [this](ftxui::Canvas& c) {
+      auto dim = ftxui::Terminal::Size();
+      drawSwitcher(c, dim.dimx, dim.dimy);
+    }), 100);
+}
+
+WindowManager* Desktop::currentWM() {
+  return ws_mgr_ ? ws_mgr_->currentWM() : nullptr;
+}
+
+void Desktop::syncPanelWM() {
+  if (panel_ && ws_mgr_)
+    panel_->setWindowManager(ws_mgr_->currentWM());
 }
 
 void Desktop::populateDesktopIcons() {
   desktop_icons_.clear();
   int iconW = 14, iconH = 3;
-  int gapX = 2, gapY = 1;
+  int gapX = 2;
   int startX = 2, startY = 1;
 
   struct Def {
@@ -79,7 +124,6 @@ void Desktop::loadConfig(const Config& config) {
   current_config_ = config;
   bgColor_ = color::parseHex(config.background_color, bgColor_);
   bg_r_ = 26; bg_g_ = 26; bg_b_ = 46;
-  // Parse RGB from hex for wallpaper use
   std::string h = config.background_color;
   if (!h.empty() && h[0] == '#') h = h.substr(1);
   if (h.size() >= 6) {
@@ -90,9 +134,10 @@ void Desktop::loadConfig(const Config& config) {
     } catch (...) {}
   }
 
-  dock_->setDockHeight(config.dock.height);
-  dock_->setBackgroundColor(config.dock.background_color);
-  dock_->setTextColor(config.dock.text_color);
+  panel_->setPanelHeight(config.dock.height);
+  panel_->setBackgroundColor(config.dock.background_color);
+  panel_->setTextColor(config.dock.text_color);
+  menu_->setDockHeight(config.dock.height);
   menu_->setApps(config.apps);
   populateDesktopIcons();
 }
@@ -126,19 +171,8 @@ void Desktop::openConfigEditor() {
   frame->setBorderColor(current_config_.windows.border_color);
   frame->setTitleColor(current_config_.windows.title_color);
   frame->setBgColor(current_config_.windows.border_color);
-  wm_->addWindow(std::move(frame));
-
-  bool alreadyInDock = false;
-  for (const auto& a : dock_->apps()) {
-    if (a.name == "Config Editor") { alreadyInDock = true; break; }
-  }
-  if (!alreadyInDock) {
-    DockApp dapp;
-    dapp.name = "Config Editor";
-    dapp.command = "";
-    dapp.is_running = true;
-    dock_->addApp(dapp);
-  }
+  auto* wm = currentWM();
+  if (wm) wm->addWindow(std::move(frame));
 }
 
 void Desktop::launchApp(const std::string& name, const std::string& command, bool internal) {
@@ -161,33 +195,8 @@ void Desktop::launchApp(const std::string& name, const std::string& command, boo
   frame->setBorderColor(current_config_.windows.border_color);
   frame->setTitleColor(current_config_.windows.title_color);
   frame->setBgColor(current_config_.windows.border_color);
-  wm_->addWindow(std::move(frame));
-
-  bool alreadyInDock = false;
-  for (const auto& a : dock_->apps()) {
-    if (a.name == name) { alreadyInDock = true; break; }
-  }
-  if (!alreadyInDock) {
-    DockApp dapp;
-    dapp.name = name;
-    dapp.command = command;
-    dapp.is_running = true;
-    dock_->addApp(dapp);
-  }
-}
-
-void Desktop::removeClosedWindowsFromDock() {
-  auto wins = wm_->windows();
-
-  std::vector<DockApp> updated;
-  for (auto& app : dock_->apps()) {
-    auto it = std::find_if(wins.begin(), wins.end(),
-      [&](WindowFrame* w) { return w->title() == app.name; });
-    if (it != wins.end()) {
-      updated.push_back(app);
-    }
-  }
-  dock_->setApps(updated);
+  auto* wm = currentWM();
+  if (wm) wm->addWindow(std::move(frame));
 }
 
 void Desktop::openContextMenu(int mx, int my) {
@@ -214,7 +223,6 @@ void Desktop::drawWallpaper(ftxui::Canvas& c, int w, int h) {
     static_cast<uint8_t>(bg_r_ * 0.7f),
     static_cast<uint8_t>(bg_g_ * 0.7f),
     static_cast<uint8_t>(bg_b_ * 0.7f));
-
   for (int row = 0; row < h; ++row) {
     float t = static_cast<float>(row) / static_cast<float>(std::max(1, h));
     auto col = ftxui::Color::Interpolate(t, dark, base);
@@ -231,12 +239,10 @@ void Desktop::drawDesktopIcons(ftxui::Canvas& c) {
   for (auto& ic : desktop_icons_) {
     bool hover = mouse_x_ >= ic.x && mouse_x_ < ic.x + ic.w &&
                  mouse_y_ >= ic.y && mouse_y_ < ic.y + ic.h;
-
     auto fg = hover ? hoverFg : iconFg;
     auto bg = hover ? hoverBg : iconBg;
 
     canvas::fill(c, ic.x + 1, ic.y + 1, ic.w - 2, ic.h - 2, bg);
-
     if (hover) {
       canvas::write(c, ic.x, ic.y, "\u250c", hoverBg, hoverBg);
       canvas::write(c, ic.x + ic.w - 1, ic.y, "\u2510", hoverBg, hoverBg);
@@ -251,17 +257,12 @@ void Desktop::drawDesktopIcons(ftxui::Canvas& c) {
         canvas::write(c, ic.x + ic.w - 1, ic.y + i, "\u2502", hoverBg, bg);
       }
     }
-
-    // Icon symbol
     std::string iconChar;
     if (ic.name == "Terminal") iconChar = "\u25A0";
     else if (ic.name == "File Manager") iconChar = "\u25B6";
     else if (ic.name == "Calculator") iconChar = "\u25C6";
     else iconChar = "\u25CF";
-
     canvas::write(c, ic.x + ic.w / 2 - 1, ic.y + 1, iconChar, fg, bg);
-
-    // Label
     std::string label = ic.name;
     if (static_cast<int>(label.size()) > ic.w - 2)
       label = label.substr(0, static_cast<size_t>(std::max(0, ic.w - 4))) + ".";
@@ -271,19 +272,16 @@ void Desktop::drawDesktopIcons(ftxui::Canvas& c) {
 
 void Desktop::drawSwitcher(ftxui::Canvas& c, int sw, int sh) {
   if (!switcher_active_) return;
-
-  auto wins = wm_->windows();
-  if (wins.empty()) {
-    switcher_active_ = false;
-    return;
-  }
+  auto* wm = currentWM();
+  if (!wm) { switcher_active_ = false; return; }
+  auto wins = wm->windows();
+  if (wins.empty()) { switcher_active_ = false; return; }
 
   int count = static_cast<int>(wins.size());
   int boxW = std::min(50, sw - 10);
   int boxH = std::min(count + 3, 16);
   int boxX = (sw - boxW) / 2;
   int boxY = (sh - boxH) / 3;
-
   auto border = ftxui::Color::RGB(233, 69, 96);
   auto bg = ftxui::Color::RGB(20, 20, 40);
   auto textFg = ftxui::Color::RGB(200, 200, 220);
@@ -291,8 +289,6 @@ void Desktop::drawSwitcher(ftxui::Canvas& c, int sw, int sh) {
   auto selFg = ftxui::Color::RGB(255, 255, 255);
 
   canvas::fill(c, boxX + 1, boxY + 1, boxW - 2, boxH - 2, bg);
-
-  // Border
   canvas::write(c, boxX, boxY, "\u250c", border, border);
   canvas::write(c, boxX + boxW - 1, boxY, "\u2510", border, border);
   canvas::write(c, boxX, boxY + boxH - 1, "\u2514", border, bg);
@@ -305,25 +301,19 @@ void Desktop::drawSwitcher(ftxui::Canvas& c, int sw, int sh) {
     canvas::write(c, boxX, boxY + i, "\u2502", border, bg);
     canvas::write(c, boxX + boxW - 1, boxY + i, "\u2502", border, bg);
   }
-
-  int titleY = boxY + 1;
-  canvas::write(c, boxX + 2, titleY, "  Window Switcher  ", border, bg);
+  canvas::write(c, boxX + 2, boxY + 1, "  Window Switcher  ", border, bg);
 
   int visible = std::min(count, boxH - 3);
   int startIdx = 0;
-  if (switcher_selected_ >= visible)
-    startIdx = switcher_selected_ - visible + 1;
-
+  if (switcher_selected_ >= visible) startIdx = switcher_selected_ - visible + 1;
   for (int i = 0; i < visible; ++i) {
     int idx = startIdx + i;
     if (idx >= count) break;
     auto* win = wins[static_cast<size_t>(idx)];
     std::string winTitle = win->title();
-    if (win->isMinimized())
-      winTitle += " (min)";
+    if (win->isMinimized()) winTitle += " (min)";
     if (static_cast<int>(winTitle.size()) > boxW - 5)
       winTitle = winTitle.substr(0, static_cast<size_t>(boxW - 8)) + "...";
-
     bool isSel = (idx == switcher_selected_);
     auto itemFg = isSel ? selFg : textFg;
     auto itemBg = isSel ? selBg : bg;
@@ -339,20 +329,9 @@ ftxui::Element Desktop::Render() {
 
   return ftxui::canvas(dim.dimx * 2, dim.dimy * 4,
     [this, dim](ftxui::Canvas& canvas) {
-    int sw = dim.dimx, sh = dim.dimy;
+    compositor_.draw(canvas);
 
-    drawWallpaper(canvas, sw, sh);
-
-    if (desktop_icons_.empty() && current_config_.apps.size() > 0)
-      populateDesktopIcons();
-    drawDesktopIcons(canvas);
-
-    if (wm_) wm_->draw(canvas);
-    if (menu_ && menu_->isOpen()) menu_->draw(canvas);
-    if (dock_) dock_->draw(canvas);
-
-    drawSwitcher(canvas, sw, sh);
-
+    // Context menu drawn last (highest z) since it's a quick overlay
     if (ctx_open_) {
       int cw = 22;
       int ch = static_cast<int>(ctx_items_.size()) + 2;
@@ -361,14 +340,11 @@ ftxui::Element Desktop::Render() {
       auto ctxBg = ftxui::Color::RGB(35, 35, 55);
       auto ctxBorder = ftxui::Color::RGB(233, 69, 96);
       auto ctxText = ftxui::Color::RGB(224, 224, 224);
-
       canvas::fill(canvas, cx + 1, cy + 1, cw - 2, ch - 2, ctxBg);
-
       canvas::write(canvas, cx, cy, "\u250c", ctxBorder, ctxBorder);
       canvas::write(canvas, cx + cw - 1, cy, "\u2510", ctxBorder, ctxBorder);
       canvas::write(canvas, cx, cy + ch - 1, "\u2514", ctxBorder, ctxBg);
       canvas::write(canvas, cx + cw - 1, cy + ch - 1, "\u2518", ctxBorder, ctxBg);
-
       for (int i = 1; i < cw - 1; ++i) {
         canvas::write(canvas, cx + i, cy, "\u2500", ctxBorder, ctxBorder);
         canvas::write(canvas, cx + i, cy + ch - 1, "\u2500", ctxBorder, ctxBg);
@@ -377,7 +353,6 @@ ftxui::Element Desktop::Render() {
         canvas::write(canvas, cx, cy + i, "\u2502", ctxBorder, ctxBg);
         canvas::write(canvas, cx + cw - 1, cy + i, "\u2502", ctxBorder, ctxBg);
       }
-
       for (int i = 0; i < static_cast<int>(ctx_items_.size()); ++i) {
         auto fg = (i == ctx_sel_) ? ftxui::Color::White : ctxText;
         auto bg = (i == ctx_sel_) ? ftxui::Color::RGB(233, 69, 96) : ctxBg;
@@ -391,26 +366,18 @@ ftxui::Element Desktop::Render() {
 }
 
 bool Desktop::OnEvent(ftxui::Event event) {
-  // Track mouse position for icon hover
   if (event.is_mouse()) {
     mouse_x_ = event.mouse().x;
     mouse_y_ = event.mouse().y;
   }
 
-  // ------ Context menu handling ------
+  auto* wm = currentWM();
+
+  // ------ Context menu ------
   if (ctx_open_) {
-    if (event == ftxui::Event::Escape) {
-      closeContextMenu();
-      return true;
-    }
-    if (event == ftxui::Event::ArrowUp) {
-      if (ctx_sel_ > 0) ctx_sel_--;
-      return true;
-    }
-    if (event == ftxui::Event::ArrowDown) {
-      if (ctx_sel_ < static_cast<int>(ctx_items_.size()) - 1) ctx_sel_++;
-      return true;
-    }
+    if (event == ftxui::Event::Escape) { closeContextMenu(); return true; }
+    if (event == ftxui::Event::ArrowUp) { if (ctx_sel_ > 0) ctx_sel_--; return true; }
+    if (event == ftxui::Event::ArrowDown) { if (ctx_sel_ < static_cast<int>(ctx_items_.size()) - 1) ctx_sel_++; return true; }
     if (event == ftxui::Event::Return) {
       std::string sel = ctx_items_[static_cast<size_t>(ctx_sel_)];
       closeContextMenu();
@@ -441,66 +408,61 @@ bool Desktop::OnEvent(ftxui::Event event) {
             else if (sel == "Reload Config") loadConfigFromFile();
             else if (sel == "Exit" && screen_) screen_->Exit();
           }
-        } else {
-          closeContextMenu();
-        }
+        } else { closeContextMenu(); }
         return true;
       }
     }
     return true;
   }
 
-  // ------ Window Switcher (Alt+Tab style with F2) ------
+  // ------ Switcher ------
   if (switcher_active_) {
     if (event == ftxui::Event::Escape) {
-      auto wins = wm_->windows();
-      if (switcher_original_focus_ >= 0 &&
-          switcher_original_focus_ < static_cast<int>(wins.size())) {
-        wm_->focusWindow(wins[static_cast<size_t>(switcher_original_focus_)]);
+      if (wm) {
+        auto wins = wm->windows();
+        if (switcher_original_focus_ >= 0 && switcher_original_focus_ < static_cast<int>(wins.size()))
+          wm->focusWindow(wins[static_cast<size_t>(switcher_original_focus_)]);
       }
       switcher_active_ = false;
       return true;
     }
     if (event == ftxui::Event::Return) {
-      auto wins = wm_->windows();
-      if (switcher_selected_ >= 0 &&
-          switcher_selected_ < static_cast<int>(wins.size())) {
-        wm_->focusWindow(wins[static_cast<size_t>(switcher_selected_)]);
+      if (wm) {
+        auto wins = wm->windows();
+        if (switcher_selected_ >= 0 && switcher_selected_ < static_cast<int>(wins.size()))
+          wm->focusWindow(wins[static_cast<size_t>(switcher_selected_)]);
       }
       switcher_active_ = false;
       return true;
     }
     if (event == ftxui::Event::Tab) {
-      auto wins = wm_->windows();
-      if (!wins.empty()) {
-        switcher_cycle_ = true;
-        switcher_selected_ = (switcher_selected_ + 1) % static_cast<int>(wins.size());
+      if (wm) {
+        auto wins = wm->windows();
+        if (!wins.empty())
+          switcher_selected_ = (switcher_selected_ + 1) % static_cast<int>(wins.size());
       }
       return true;
     }
     if (event == ftxui::Event::TabReverse) {
-      auto wins = wm_->windows();
-      if (!wins.empty()) {
-        switcher_cycle_ = true;
-        switcher_selected_ = (switcher_selected_ - 1 + static_cast<int>(wins.size())) % static_cast<int>(wins.size());
+      if (wm) {
+        auto wins = wm->windows();
+        if (!wins.empty())
+          switcher_selected_ = (switcher_selected_ - 1 + static_cast<int>(wins.size())) % static_cast<int>(wins.size());
       }
       return true;
     }
     if (event == ftxui::Event::F2) {
-      auto wins = wm_->windows();
-      if (switcher_cycle_ && switcher_selected_ >= 0 &&
-          switcher_selected_ < static_cast<int>(wins.size())) {
-        wm_->focusWindow(wins[static_cast<size_t>(switcher_selected_)]);
+      if (switcher_cycle_ && wm) {
+        auto wins = wm->windows();
+        if (switcher_selected_ >= 0 && switcher_selected_ < static_cast<int>(wins.size()))
+          wm->focusWindow(wins[static_cast<size_t>(switcher_selected_)]);
       }
       switcher_active_ = false;
       return true;
     }
-    if (event.is_mouse()) {
-      auto& mouse = event.mouse();
-      if (mouse.motion == ftxui::Mouse::Pressed && mouse.button == ftxui::Mouse::Left) {
-        switcher_active_ = false;
-        return true;
-      }
+    if (event.is_mouse() && event.mouse().motion == ftxui::Mouse::Pressed && event.mouse().button == ftxui::Mouse::Left) {
+      switcher_active_ = false;
+      return true;
     }
     return true;
   }
@@ -517,25 +479,19 @@ bool Desktop::OnEvent(ftxui::Event event) {
   }
 
   if (event == ftxui::Event::F2) {
-    // Toggle window switcher
-    auto wins = wm_->windows();
+    if (!wm) return true;
+    auto wins = wm->windows();
     if (wins.size() > 1) {
       if (!switcher_active_) {
         switcher_original_focus_ = -1;
-        for (int i = 0; i < static_cast<int>(wins.size()); ++i) {
-          if (wins[static_cast<size_t>(i)]->focused()) {
-            switcher_original_focus_ = i;
-            break;
-          }
-        }
+        for (int i = 0; i < static_cast<int>(wins.size()); ++i)
+          if (wins[static_cast<size_t>(i)]->focused()) { switcher_original_focus_ = i; break; }
         switcher_selected_ = (switcher_original_focus_ + 1) % static_cast<int>(wins.size());
         switcher_cycle_ = false;
         switcher_active_ = true;
       } else {
-        if (switcher_cycle_ && switcher_selected_ >= 0 &&
-            switcher_selected_ < static_cast<int>(wins.size())) {
-          wm_->focusWindow(wins[static_cast<size_t>(switcher_selected_)]);
-        }
+        if (switcher_cycle_ && switcher_selected_ >= 0 && switcher_selected_ < static_cast<int>(wins.size()))
+          wm->focusWindow(wins[static_cast<size_t>(switcher_selected_)]);
         switcher_active_ = false;
       }
     }
@@ -543,25 +499,53 @@ bool Desktop::OnEvent(ftxui::Event event) {
   }
 
   if (event == ftxui::Event::F4) {
-    wm_->closeFocused();
-    removeClosedWindowsFromDock();
+    if (wm) wm->closeFocused();
+    syncPanelWM();
     return true;
   }
 
-  // ------ Desktop icon clicks ------
+  // ------ Workspace switching: Alt+1..4 ------
+  if (event.is_character()) {
+    auto ch = event.character();
+    if (ch.size() == 1 && ch[0] >= '1' && ch[0] <= '4') {
+      // Check for Alt modifier: input string starts with ESC
+      if (event.input().size() > 1 && event.input()[0] == '\x1b') {
+        int ws = ch[0] - '1';
+        ws_mgr_->switchTo(ws);
+        syncPanelWM();
+        return true;
+      }
+    }
+  }
+
+  // Ctrl+Alt+Left / Ctrl+Alt+Right → switch workspace
+  // These come through escape sequences
+  if (event.input() == "\x1b\x1b\x5b\x44" ||  // ESC ESC [ D
+      event.input() == "\x1b\x5b\x31\x3b\x35\x44") {  // ESC [ 1 ; 5 D
+    int next = (ws_mgr_->currentIndex() - 1 + ws_mgr_->count()) % ws_mgr_->count();
+    ws_mgr_->switchTo(next);
+    syncPanelWM();
+    return true;
+  }
+  if (event.input() == "\x1b\x1b\x5b\x43" ||
+      event.input() == "\x1b\x5b\x31\x3b\x35\x43") {
+    int next = (ws_mgr_->currentIndex() + 1) % ws_mgr_->count();
+    ws_mgr_->switchTo(next);
+    syncPanelWM();
+    return true;
+  }
+
+  // ------ Desktop icons ------
   if (event.is_mouse() && event.mouse().button == ftxui::Mouse::Left &&
       event.mouse().motion == ftxui::Mouse::Pressed) {
     int mx = event.mouse().x, my = event.mouse().y;
     auto dim = ftxui::Terminal::Size();
-    int dockArea = dock_ ? dock_->dockHeight() : 2;
-    if (my < dim.dimy - dockArea) {
+    int panelH = panel_ ? panel_->panelHeight() : 2;
+    if (my < dim.dimy - panelH) {
       for (auto& ic : desktop_icons_) {
-        if (mx >= ic.x && mx < ic.x + ic.w &&
-            my >= ic.y && my < ic.y + ic.h) {
-          if (ic.internal)
-            launchApp(ic.name, ic.command, true);
-          else
-            launchApp(ic.name, ic.command);
+        if (mx >= ic.x && mx < ic.x + ic.w && my >= ic.y && my < ic.y + ic.h) {
+          if (ic.internal) launchApp(ic.name, ic.command, true);
+          else launchApp(ic.name, ic.command);
           return true;
         }
       }
@@ -569,15 +553,12 @@ bool Desktop::OnEvent(ftxui::Event event) {
   }
 
   if (menu_ && menu_->isOpen()) {
-    if (menu_->handleEvent(event))
-      return true;
+    if (menu_->handleEvent(event)) return true;
   }
 
-  if (dock_ && dock_->handleEvent(event))
-    return true;
+  if (panel_ && panel_->handleEvent(event)) return true;
 
-  if (wm_ && wm_->handleEvent(event))
-    return true;
+  if (wm && wm->handleEvent(event)) return true;
 
   if (event.is_mouse() && event.mouse().button == ftxui::Mouse::Right &&
       event.mouse().motion == ftxui::Mouse::Pressed) {
