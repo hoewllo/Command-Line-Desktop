@@ -67,9 +67,9 @@ void WindowFrame::draw(ftxui::Canvas& canvas) {
   canvas::write(canvas, x() + 2, y(), " " + titleText + " ", titleFg, titleColor_);
 
   if (closable_) {
-    canvas::write(canvas, x() + width() - 7, y(), " _ ",
+    canvas::write(canvas, x() + width() - close_btn_w_ - minimize_btn_w_, y(), " _ ",
       ftxui::Color::RGB(255, 200, 100), titleColor_);
-    canvas::write(canvas, x() + width() - 4, y(), " X ",
+    canvas::write(canvas, x() + width() - close_btn_w_, y(), " X ",
       ftxui::Color::RGB(255, 100, 100), titleColor_);
   }
 

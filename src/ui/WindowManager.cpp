@@ -88,13 +88,13 @@ void WindowManager::focusWindow(WindowFrame* window) {
   }
 }
 
-WindowFrame* WindowManager::focusedWindow() {
+WindowFrame* WindowManager::focusedWindow() const {
   if (focused_idx_ >= 0 && focused_idx_ < static_cast<int>(windows_.size()))
     return windows_[static_cast<size_t>(focused_idx_)].get();
   return nullptr;
 }
 
-std::vector<WindowFrame*> WindowManager::windows() {
+std::vector<WindowFrame*> WindowManager::windows() const {
   std::vector<WindowFrame*> result;
   for (auto& win : windows_) result.push_back(win.get());
   return result;
@@ -181,7 +181,7 @@ bool WindowManager::handleEvent(ftxui::Event event) {
           focused_idx_ = i;
 
           bool onX = (mouse.y >= win->y() && mouse.y < win->y() + 2 &&
-                      mouse.x >= win->x() + win->width() - 4 &&
+                      mouse.x >= win->x() + win->width() - close_btn_w_ &&
                       mouse.x < win->x() + win->width());
           if (onX) {
             closeFocused();
@@ -189,15 +189,15 @@ bool WindowManager::handleEvent(ftxui::Event event) {
           }
 
           bool onMin = (mouse.y >= win->y() && mouse.y < win->y() + 2 &&
-                        mouse.x >= win->x() + win->width() - 7 &&
-                        mouse.x < win->x() + win->width() - 4);
+                        mouse.x >= win->x() + win->width() - close_btn_w_ - minimize_btn_w_ &&
+                        mouse.x < win->x() + win->width() - close_btn_w_);
           if (onMin) {
             win->minimize();
             return true;
           }
 
           if (mouse.y >= win->y() && mouse.y < win->y() + 2 &&
-              mouse.x < win->x() + win->width() - 7) {
+              mouse.x < win->x() + win->width() - close_btn_w_ - minimize_btn_w_) {
             dragging_ = true;
             dragWindow_ = win;
             dragOffsetX_ = mouse.x - win->x();

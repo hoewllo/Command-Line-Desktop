@@ -19,8 +19,8 @@ public:
   void cycleFocus(bool reverse = false);
   void focusWindow(WindowFrame* window);
 
-  WindowFrame* focusedWindow();
-  std::vector<WindowFrame*> windows();
+  WindowFrame* focusedWindow() const;
+  std::vector<WindowFrame*> windows() const;
 
   int windowCount() const { return static_cast<int>(windows_.size()); }
 
@@ -38,4 +38,6 @@ private:
   void handleResize(ftxui::Event event);
 
   static constexpr int resize_margin_ = 3;
+  static constexpr int close_btn_w_ = 4;
+  static constexpr int minimize_btn_w_ = 3;
 };

@@ -33,4 +33,6 @@ private:
   ftxui::Color titleColor_{ftxui::Color::RGB(233, 69, 96)};
 
   static constexpr int titlebar_height_ = 2;
+  static constexpr int close_btn_w_ = 4;
+  static constexpr int minimize_btn_w_ = 3;
 };

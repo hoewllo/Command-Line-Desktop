@@ -38,6 +38,6 @@ private:
   int menuX_ = 0, menuY_ = 0, menuW_ = 0, menuH_ = 0;
   int totalEntries() const;
 
-  static constexpr int SPECIAL_ENTRIES = 2;
+  static constexpr int SPECIAL_COUNT = 2;
   enum { ENTRY_EDIT_CONFIG = 0, ENTRY_EXIT = 1 };
 };

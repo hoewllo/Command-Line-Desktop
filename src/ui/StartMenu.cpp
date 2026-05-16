@@ -26,7 +26,7 @@ void StartMenu::updateFilter() {
 }
 
 int StartMenu::totalEntries() const {
-  return static_cast<int>(filteredApps_.size()) + SPECIAL_ENTRIES;
+  return static_cast<int>(filteredApps_.size()) + SPECIAL_COUNT;
 }
 
 std::string StartMenu::selectedCommand() const {
