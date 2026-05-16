@@ -165,7 +165,7 @@ std::vector<AppConfig> AppDetector::scanDesktopFiles() {
   auto macApps = scanMacAppsImpl();
   apps.insert(apps.end(), macApps.begin(), macApps.end());
 #else
-#warning "Unsupported platform: AppDetector::scanDesktopFiles() returns empty"
+#pragma message("Warning: Unsupported platform: AppDetector::scanDesktopFiles() returns empty")
 #endif
   return apps;
 }

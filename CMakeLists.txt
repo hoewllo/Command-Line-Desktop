@@ -4,6 +4,10 @@ project(cld VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(MSVC)
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()
+
 find_package(ftxui CONFIG QUIET)
 if(NOT ftxui_FOUND)
   include(FetchContent)
@@ -24,5 +28,9 @@ target_link_libraries(cld PRIVATE
   ftxui::dom
   ftxui::component
 )
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
+  target_link_libraries(cld PRIVATE stdc++fs)
+endif()
 
 install(TARGETS cld RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

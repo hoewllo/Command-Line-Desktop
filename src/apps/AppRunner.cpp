@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <csignal>
 #include <cerrno>
+#include <chrono>
+#include <thread>
 #include <sstream>
 #include <stdexcept>
 
@@ -382,7 +384,7 @@ void AppRunner::stop() {
     int status;
     for (int retry = 0; retry < 10; ++retry) {
       if (waitpid(child_pid_, &status, WNOHANG) == child_pid_) break;
-      usleep(10000);
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     child_pid_ = -1;
   }
@@ -411,7 +413,7 @@ void AppRunner::readOutput() {
   char buf[4096];
   while (running_ && fgets(buf, sizeof(buf), fp)) {
     std::lock_guard<std::mutex> lock(mutex_);
-    term_.write(buf, strlen(buf));
+    term_.write(buf, static_cast<int>(strlen(buf)));
   }
   PCLOSE(fp);
   running_ = false;

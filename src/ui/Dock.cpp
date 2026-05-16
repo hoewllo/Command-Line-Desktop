@@ -7,9 +7,17 @@
 #include <ctime>
 #include <ftxui/screen/terminal.hpp>
 
+namespace {
+std::tm portable_localtime(const std::time_t& t) {
+  std::tm result = {};
 #ifdef _WIN32
-#define localtime_r(a, b) localtime_s(b, a)
+  localtime_s(&result, &t);
+#else
+  localtime_r(&t, &result);
 #endif
+  return result;
+}
+}
 
 Dock::Dock() {}
 
@@ -66,8 +74,7 @@ void Dock::draw(ftxui::Canvas& canvas) {
   }
 
   std::time_t t = std::time(nullptr);
-  std::tm tm_result;
-  localtime_r(&t, &tm_result);
+  auto tm_result = portable_localtime(t);
   char timeBuf[16];
   std::strftime(timeBuf, sizeof(timeBuf), "%H:%M", &tm_result);
 

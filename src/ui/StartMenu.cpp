@@ -13,10 +13,11 @@ void StartMenu::updateFilter() {
   } else {
     filteredApps_.clear();
     std::string lower = search_;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    auto toLowerChar = [](unsigned char c) { return static_cast<char>(std::tolower(c)); };
+    std::transform(lower.begin(), lower.end(), lower.begin(), toLowerChar);
     for (const auto& app : apps_) {
       std::string nameLower = app.name;
-      std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+      std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), toLowerChar);
       if (nameLower.find(lower) != std::string::npos)
         filteredApps_.push_back(app);
     }
