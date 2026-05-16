@@ -126,7 +126,7 @@ static YamlNode parseYaml(const std::vector<std::string>& lines) {
     } else {
       auto colon = trimmed.find(':');
       if (colon == std::string::npos) {
-        fprintf(stderr, "YAML error: malformed line (no colon) — aborting parse: %s\n", trimmed.c_str());
+        std::fprintf(stderr, "YAML error: malformed line (no colon) — aborting parse: %s\n", trimmed.c_str());
         YamlNode empty;
         return empty;
       }
@@ -159,7 +159,7 @@ Config ConfigLoader::load(const std::string& path) {
   Config config;
   std::ifstream file(path);
   if (!file.is_open()) {
-    fprintf(stderr, "Warning: could not open config file: %s\n", path.c_str());
+    std::fprintf(stderr, "Warning: could not open config file: %s\n", path.c_str());
     return config;
   }
 
@@ -202,15 +202,16 @@ Config ConfigLoader::load(const std::string& path) {
   return config;
 }
 
-void ConfigLoader::save(const std::string& path, const Config& config) {
+bool ConfigLoader::save(const std::string& path, const Config& config) {
   std::ofstream f(path);
   if (!f.is_open()) {
-    fprintf(stderr, "Error: could not open config file for writing: %s\n", path.c_str());
-    return;
+    std::fprintf(stderr, "Error: could not open config file for writing: %s\n", path.c_str());
+    return false;
   }
 
   auto q = [](const std::string& s) -> std::string {
-    if (s.find(' ') != std::string::npos || s.empty())
+    if (s.find(' ') != std::string::npos || s.empty() ||
+        s.find('#') != std::string::npos || s.find(':') != std::string::npos)
       return "\"" + s + "\"";
     return s;
   };
@@ -235,4 +236,7 @@ void ConfigLoader::save(const std::string& path, const Config& config) {
   f << "  default_height: " << config.windows.default_height << "\n";
   f << "  border_color: " << q(config.windows.border_color) << "\n";
   f << "  title_color: " << q(config.windows.title_color) << "\n";
+
+  f.flush();
+  return f.good();
 }

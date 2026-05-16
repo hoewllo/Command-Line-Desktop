@@ -23,14 +23,12 @@ public:
   int cols() const { return cols_; }
   int scrollbackRows() const { return static_cast<int>(grid_.size()); }
   bool inAltScreen() const { return alt_screen_; }
-  void onAltScreenChange(bool alt);
 
 private:
   int cols_ = 80, rows_ = 24;
   int scrollback_max_ = 2000;
   std::deque<std::vector<TermCell>> grid_;
   std::deque<std::vector<TermCell>> saved_grid_;
-  int saved_grid_rows_ = 0;
   bool alt_screen_ = false;
   int cx_ = 0, cy_ = 0;
   int saved_cx_ = 0, saved_cy_ = 0;
@@ -98,6 +96,5 @@ private:
   std::atomic<bool> running_{false};
   std::mutex mutex_;
   int scroll_offset_ = 0;
-  bool scroll_locked_ = false;
   int last_pty_w_ = 0, last_pty_h_ = 0;
 };

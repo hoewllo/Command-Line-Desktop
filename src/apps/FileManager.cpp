@@ -16,13 +16,20 @@ void FileManager::loadDirectory(const fs::path& path) {
     }
   } catch (const std::filesystem::filesystem_error&) {}
   std::sort(entries_.begin(), entries_.end());
-  if (path.has_parent_path() && fs::exists(path.parent_path())) {
-    entries_.insert(entries_.begin(), path / "..");
+  if (path.has_parent_path()) {
+    try {
+      if (fs::exists(path.parent_path()))
+        entries_.insert(entries_.begin(), fs::canonical(path / ".."));
+    } catch (const std::filesystem::filesystem_error&) {}
   }
 }
 
 void FileManager::refresh() {
   loadDirectory(current_path_);
+  if (selected_idx_ >= static_cast<int>(entries_.size()))
+    selected_idx_ = std::max(0, static_cast<int>(entries_.size()) - 1);
+  if (scroll_offset_ > selected_idx_)
+    scroll_offset_ = selected_idx_;
 }
 
 void FileManager::navigateTo(const std::string& path) {
@@ -48,15 +55,18 @@ void FileManager::draw(ftxui::Canvas& canvas) {
   canvas::fill(canvas, list_x, y(), list_w, height(), bg);
 
   std::string pathStr = current_path_.string();
-  if (static_cast<int>(pathStr.size()) > list_w - 4)
-    pathStr = "..." + pathStr.substr(pathStr.size() - static_cast<size_t>(list_w) + 7);
+  int pathMax = std::max(1, list_w - 4);
+  if (static_cast<int>(pathStr.size()) > pathMax) {
+    int keepLen = std::max(0, list_w - 7);
+    pathStr = "..." + pathStr.substr(pathStr.size() - static_cast<size_t>(keepLen));
+  }
   canvas::write(canvas, list_x + 1, y(),
     " " + pathStr + " ",
     ftxui::Color::RGB(233, 69, 96), bg);
 
   int line_y = y() + 2;
-  int maxVisible = height() - 3;
-  for (int i = scroll_offset_; i < static_cast<int>(entries_.size()) && line_y - y() < maxVisible + 2; ++i) {
+  int visLimit = height() - 1;
+  for (int i = scroll_offset_; i < static_cast<int>(entries_.size()) && line_y - y() < visLimit; ++i) {
     auto entry = entries_[static_cast<size_t>(i)];
     auto name = entry.filename().string();
     if (static_cast<int>(name.size()) > list_w - 3)

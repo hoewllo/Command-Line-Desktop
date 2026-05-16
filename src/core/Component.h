@@ -23,10 +23,10 @@ public:
   bool visible() const { return visible_; }
   bool focused() const { return focused_; }
 
-  void setX(int x) { x_ = x; }
-  void setY(int y) { y_ = y; }
-  void setWidth(int w) { width_ = w; }
-  void setHeight(int h) { height_ = h; }
+  virtual void setX(int x) { x_ = x; }
+  virtual void setY(int y) { y_ = y; }
+  virtual void setWidth(int w) { width_ = w; }
+  virtual void setHeight(int h) { height_ = h; }
   void setVisible(bool v) { visible_ = v; }
   void setFocused(bool f) { focused_ = f; }
 

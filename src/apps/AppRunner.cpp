@@ -33,7 +33,8 @@ static const int ansi_rgb[16][3] = {
   {0,0,255},{255,0,255},{0,255,255},{255,255,255},
 };
 
-TerminalBuffer::TerminalBuffer(int cols, int rows) : cols_(cols), rows_(rows) {
+TerminalBuffer::TerminalBuffer(int cols, int rows)
+  : cols_(std::max(1, cols)), rows_(std::max(1, rows)) {
   for (int i = 0; i < rows_; ++i)
     grid_.push_back(std::vector<TermCell>(static_cast<size_t>(cols_)));
 }
@@ -105,7 +106,11 @@ void TerminalBuffer::setCursor(int row, int col) {
 void TerminalBuffer::setCursorRow(int row) { cy_ = std::max(0, std::min(rows_ - 1, row)); }
 void TerminalBuffer::insertLines(int n) {
   for (int i = 0; i < n && cy_ < rows_ - 1; ++i) {
-    grid_.insert(grid_.end() - rows_ + cy_, std::vector<TermCell>(static_cast<size_t>(cols_)));
+    if (static_cast<int>(grid_.size()) < rows_) {
+      grid_.push_front(std::vector<TermCell>(static_cast<size_t>(cols_)));
+    } else {
+      grid_.insert(grid_.end() - rows_ + cy_, std::vector<TermCell>(static_cast<size_t>(cols_)));
+    }
     if (static_cast<int>(grid_.size()) > scrollback_max_) grid_.pop_front();
   }
 }
@@ -154,13 +159,13 @@ void TerminalBuffer::applySGR(const std::vector<int>& params) {
     else if (p >= 30 && p <= 37) { ansiColor(p - 30, cur_fg_r, cur_fg_g, cur_fg_b); }
     else if (p == 38) {
       if (i + 2 < params.size() && params[i+1] == 5) { color256(params[i+2], cur_fg_r, cur_fg_g, cur_fg_b); i += 2; }
-      else if (i + 4 < params.size() && params[i+1] == 2) { cur_fg_r = static_cast<uint8_t>(params[i+2]); cur_fg_g = static_cast<uint8_t>(params[i+3]); cur_fg_b = static_cast<uint8_t>(params[i+4]); i += 4; }
+      else if (i + 4 < params.size() && params[i+1] == 2) { cur_fg_r = static_cast<uint8_t>(std::clamp(params[i+2], 0, 255)); cur_fg_g = static_cast<uint8_t>(std::clamp(params[i+3], 0, 255)); cur_fg_b = static_cast<uint8_t>(std::clamp(params[i+4], 0, 255)); i += 4; }
     } else if (p == 39) {
       cur_fg_r = def_fg_r; cur_fg_g = def_fg_g; cur_fg_b = def_fg_b;
     } else if (p >= 40 && p <= 47) { ansiColor(p - 40, cur_bg_r, cur_bg_g, cur_bg_b); }
     else if (p == 48) {
       if (i + 2 < params.size() && params[i+1] == 5) { color256(params[i+2], cur_bg_r, cur_bg_g, cur_bg_b); i += 2; }
-      else if (i + 4 < params.size() && params[i+1] == 2) { cur_bg_r = static_cast<uint8_t>(params[i+2]); cur_bg_g = static_cast<uint8_t>(params[i+3]); cur_bg_b = static_cast<uint8_t>(params[i+4]); i += 4; }
+      else if (i + 4 < params.size() && params[i+1] == 2) { cur_bg_r = static_cast<uint8_t>(std::clamp(params[i+2], 0, 255)); cur_bg_g = static_cast<uint8_t>(std::clamp(params[i+3], 0, 255)); cur_bg_b = static_cast<uint8_t>(std::clamp(params[i+4], 0, 255)); i += 4; }
     } else if (p == 49) {
       cur_bg_r = def_bg_r; cur_bg_g = def_bg_g; cur_bg_b = def_bg_b;
     } else if (p >= 90 && p <= 97) { ansiColor(p - 90 + 8, cur_fg_r, cur_fg_g, cur_fg_b); }
@@ -179,17 +184,19 @@ void TerminalBuffer::executeCSI(char final_char) {
   }
   if (params.empty()) params.push_back(0);
 
+  auto def1 = [&](size_t i) { return (i < params.size() && params[i] > 0) ? params[i] : 1; };
+
   switch (final_char) {
     case 'H': case 'f':
       setCursor(params.size() > 0 ? params[0] - 1 : 0,
                 params.size() > 1 ? params[1] - 1 : 0);
       break;
-    case 'A': cursorUp(params[0]); break;
-    case 'B': cursorDown(params[0]); break;
-    case 'C': cursorForward(params[0]); break;
-    case 'D': cursorBack(params[0]); break;
-    case 'E': cursorDown(params[0]); cx_ = 0; break;
-    case 'F': cursorUp(params[0]); cx_ = 0; break;
+    case 'A': cursorUp(def1(0)); break;
+    case 'B': cursorDown(def1(0)); break;
+    case 'C': cursorForward(def1(0)); break;
+    case 'D': cursorBack(def1(0)); break;
+    case 'E': cursorDown(def1(0)); cx_ = 0; break;
+    case 'F': cursorUp(def1(0)); cx_ = 0; break;
     case 'G': cx_ = std::max(0, std::min(cols_ - 1, params[0] - 1)); break;
     case 'd': setCursorRow(params[0] - 1); break;
     case 'J': clearScreen(params[0]); break;
@@ -202,7 +209,6 @@ void TerminalBuffer::executeCSI(char final_char) {
     case 'h':
       if (csi_private_ && !params.empty() && params[0] == 1049 && !alt_screen_) {
         saved_grid_ = grid_;
-        saved_grid_rows_ = rows_;
         grid_.clear();
         for (int i = 0; i < rows_; ++i)
           grid_.push_back(std::vector<TermCell>(static_cast<size_t>(cols_)));
@@ -216,6 +222,8 @@ void TerminalBuffer::executeCSI(char final_char) {
           grid_ = std::move(saved_grid_);
           saved_grid_.clear();
         }
+        while (static_cast<int>(grid_.size()) < rows_)
+          grid_.push_back(std::vector<TermCell>(static_cast<size_t>(cols_)));
         cx_ = cy_ = 0;
         alt_screen_ = false;
       }
@@ -255,7 +263,7 @@ void TerminalBuffer::write(const char* data, int len) {
 }
 
 void TerminalBuffer::resize(int cols, int rows) {
-  cols_ = cols; rows_ = rows;
+  cols_ = std::max(1, cols); rows_ = std::max(1, rows);
   while (static_cast<int>(grid_.size()) < rows_) grid_.push_back(std::vector<TermCell>(static_cast<size_t>(cols_)));
   while (static_cast<int>(grid_.size()) > scrollback_max_) grid_.pop_front();
   for (auto& row : grid_) row.resize(static_cast<size_t>(cols_));
@@ -281,7 +289,8 @@ void TerminalBuffer::draw(ftxui::Canvas& canvas, int x, int y, int w, int h, boo
 
     for (int col = 0; col < drawCols; ++col) {
       auto& c = grid_[static_cast<size_t>(gridIdx)][static_cast<size_t>(std::max(0, std::min(cols_ - 1, col)))];
-      bool isCursor = (showCursor && col == cx_ && row == cy_);
+      int cursorRow = cy_ + scrollOffset;
+      bool isCursor = (showCursor && col == cx_ && gridIdx == totalGrid - rows_ - scrollOffset + cursorRow);
       uint8_t fg_r = isCursor ? 0 : c.fg_r;
       uint8_t fg_g = isCursor ? 0 : c.fg_g;
       uint8_t fg_b = isCursor ? 0 : c.fg_b;
@@ -349,6 +358,8 @@ void AppRunner::start() {
     resizePty();
     worker_ = std::thread([this]() { readOutputPty(); });
   } else {
+    if (wake_pipe_[0] >= 0) { close(wake_pipe_[0]); wake_pipe_[0] = -1; }
+    if (wake_pipe_[1] >= 0) { close(wake_pipe_[1]); wake_pipe_[1] = -1; }
     master_fd_ = -1;
     running_ = false;
     fprintf(stderr, "Error: forkpty() failed for command: %s\n", command_.c_str());
@@ -369,7 +380,10 @@ void AppRunner::stop() {
   if (worker_.joinable()) worker_.join();
   if (child_pid_ > 0) {
     int status;
-    waitpid(child_pid_, &status, WNOHANG);
+    for (int retry = 0; retry < 10; ++retry) {
+      if (waitpid(child_pid_, &status, WNOHANG) == child_pid_) break;
+      usleep(10000);
+    }
     child_pid_ = -1;
   }
   if (master_fd_ >= 0) { close(master_fd_); master_fd_ = -1; }
@@ -424,7 +438,7 @@ void AppRunner::readOutputPty() {
         std::lock_guard<std::mutex> lock(mutex_);
         term_.write(buf, static_cast<int>(n));
       } else if (n == 0) break;
-      else if (n < 0 && errno != EAGAIN) break;
+      else if (n < 0 && errno != EAGAIN && errno != EINTR) break;
     }
   }
   running_ = false;
@@ -546,14 +560,20 @@ bool AppRunner::handleEvent(ftxui::Event event) {
     }
 
     if (event == ftxui::Event::PageUp) {
-      scroll_offset_ += term_.visibleRows() / 2;
-      if (scroll_offset_ > term_.scrollbackRows() - term_.visibleRows())
-        scroll_offset_ = term_.scrollbackRows() - term_.visibleRows();
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        scroll_offset_ += term_.visibleRows() / 2;
+        int maxScroll = term_.scrollbackRows() - term_.visibleRows();
+        if (scroll_offset_ > maxScroll) scroll_offset_ = std::max(0, maxScroll);
+      }
       if (scroll_offset_ < 0) scroll_offset_ = 0;
       return true;
     }
     if (event == ftxui::Event::PageDown) {
-      scroll_offset_ -= term_.visibleRows() / 2;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        scroll_offset_ -= term_.visibleRows() / 2;
+      }
       if (scroll_offset_ < 0) scroll_offset_ = 0;
       return true;
     }
@@ -563,7 +583,10 @@ bool AppRunner::handleEvent(ftxui::Event event) {
       return true;
     }
     if (event == ftxui::Event::End) {
-      scroll_offset_ = term_.scrollbackRows() - term_.visibleRows();
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        scroll_offset_ = term_.scrollbackRows() - term_.visibleRows();
+      }
       if (scroll_offset_ < 0) scroll_offset_ = 0;
       return true;
     }

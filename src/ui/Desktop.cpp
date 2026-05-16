@@ -4,6 +4,7 @@
 #include "Dock.h"
 #include "StartMenu.h"
 #include "CanvasHelpers.h"
+#include "core/ColorUtils.h"
 #include "config/ConfigLoader.h"
 #include "apps/AppRunner.h"
 #include "apps/FileManager.h"
@@ -20,6 +21,10 @@ Desktop::Desktop() {
 
   dock_->setDockHeight(2);
   dock_->setWindowManager(wm_.get());
+
+  wm_->onWindowClosed = [this]() {
+    removeClosedWindowsFromDock();
+  };
 
   dock_->onStartClick = [this]() { menu_->toggle(); };
 
@@ -41,17 +46,7 @@ Desktop::Desktop() {
 
 void Desktop::loadConfig(const Config& config) {
   current_config_ = config;
-  auto hex = config.background_color;
-  if (!hex.empty() && hex[0] == '#') hex = hex.substr(1);
-  if (hex.size() >= 6) {
-    try {
-      auto r = std::stoi(hex.substr(0, 2), nullptr, 16);
-      auto g = std::stoi(hex.substr(2, 2), nullptr, 16);
-      auto b = std::stoi(hex.substr(4, 2), nullptr, 16);
-      bgColor_ = ftxui::Color::RGB(static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b));
-    } catch (const std::invalid_argument&) {
-    } catch (const std::out_of_range&) {}
-  }
+  bgColor_ = color::parseHex(config.background_color, bgColor_);
 
   dock_->setDockHeight(config.dock.height);
   dock_->setBackgroundColor(config.dock.background_color);
@@ -60,14 +55,24 @@ void Desktop::loadConfig(const Config& config) {
 }
 
 void Desktop::loadConfigFromFile() {
-  ConfigLoader loader;
-  auto config = loader.load(config_path_);
-  loadConfig(config);
+  try {
+    ConfigLoader loader;
+    auto config = loader.load(config_path_);
+    loadConfig(config);
+  } catch (const std::exception& e) {
+    fprintf(stderr, "Error loading config: %s\n", e.what());
+  }
 }
 
 void Desktop::openConfigEditor() {
   ConfigLoader loader;
-  auto config = loader.load(config_path_);
+  Config config;
+  try {
+    config = loader.load(config_path_);
+  } catch (const std::exception& e) {
+    fprintf(stderr, "Error loading config for editor: %s\n", e.what());
+    return;
+  }
 
   auto editor = std::make_unique<ConfigEditor>(config, config_path_);
   editor->onSaved = [this]() {
@@ -77,11 +82,20 @@ void Desktop::openConfigEditor() {
   auto frame = std::make_unique<WindowFrame>(std::move(editor));
   frame->setBorderColor(current_config_.windows.border_color);
   frame->setTitleColor(current_config_.windows.title_color);
-  frame->setBgColor(current_config_.dock.background_color);
-  frame->setPos(5, 3,
-    current_config_.windows.default_width,
-    current_config_.windows.default_height);
+  frame->setBgColor(current_config_.windows.border_color);
   wm_->addWindow(std::move(frame));
+
+  bool alreadyInDock = false;
+  for (const auto& a : dock_->apps()) {
+    if (a.name == "Config Editor") { alreadyInDock = true; break; }
+  }
+  if (!alreadyInDock) {
+    DockApp dapp;
+    dapp.name = "Config Editor";
+    dapp.command = "";
+    dapp.is_running = true;
+    dock_->addApp(dapp);
+  }
 }
 
 void Desktop::launchApp(const std::string& name, const std::string& command, bool internal) {
@@ -103,7 +117,7 @@ void Desktop::launchApp(const std::string& name, const std::string& command, boo
   auto frame = std::make_unique<WindowFrame>(std::move(content));
   frame->setBorderColor(current_config_.windows.border_color);
   frame->setTitleColor(current_config_.windows.title_color);
-  frame->setBgColor(current_config_.dock.background_color);
+  frame->setBgColor(current_config_.windows.border_color);
   wm_->addWindow(std::move(frame));
 
   bool alreadyInDock = false;
@@ -128,7 +142,6 @@ void Desktop::removeClosedWindowsFromDock() {
       [&](WindowFrame* w) { return w->title() == app.name; });
     if (it != wins.end()) {
       updated.push_back(app);
-      wins.erase(it);
     }
   }
   dock_->setApps(updated);
@@ -168,22 +181,28 @@ ftxui::Element Desktop::Render() {
     if (ctx_open_) {
       int cw = 22;
       int ch = static_cast<int>(ctx_items_.size()) + 2;
-      int cx = std::min(ctx_x_, dim.dimx - cw - 1);
-      int cy = std::min(ctx_y_, dim.dimy - ch - 1);
+      int cx = (dim.dimx > cw + 1) ? std::min(ctx_x_, dim.dimx - cw - 1) : 0;
+      int cy = (dim.dimy > ch + 1) ? std::min(ctx_y_, dim.dimy - ch - 1) : 0;
       auto ctxBg = ftxui::Color::RGB(35, 35, 55);
       auto ctxBorder = ftxui::Color::RGB(233, 69, 96);
       auto ctxText = ftxui::Color::RGB(224, 224, 224);
-      canvas::fill(canvas, cx, cy, cw, ch, ctxBg);
-      for (int i = 0; i < cw; ++i) {
+
+      canvas::fill(canvas, cx + 1, cy + 1, cw - 2, ch - 2, ctxBg);
+
+      canvas::write(canvas, cx, cy, "\u250c", ctxBorder, ctxBorder);
+      canvas::write(canvas, cx + cw - 1, cy, "\u2510", ctxBorder, ctxBorder);
+      canvas::write(canvas, cx, cy + ch - 1, "\u2514", ctxBorder, ctxBg);
+      canvas::write(canvas, cx + cw - 1, cy + ch - 1, "\u2518", ctxBorder, ctxBg);
+
+      for (int i = 1; i < cw - 1; ++i) {
         canvas::write(canvas, cx + i, cy, "\u2500", ctxBorder, ctxBorder);
-        canvas::write(canvas, cx + i, cy + ch - 1, "\u2500", ctxBorder, ctxBorder);
+        canvas::write(canvas, cx + i, cy + ch - 1, "\u2500", ctxBorder, ctxBg);
       }
-      for (int i = 0; i < ch; ++i) {
-        canvas::write(canvas, cx, cy + i, "\u2502", ctxBorder,
-          i == 0 ? ctxBorder : ctxBg);
-        canvas::write(canvas, cx + cw - 1, cy + i, "\u2502", ctxBorder,
-          i == 0 ? ctxBorder : ctxBg);
+      for (int i = 1; i < ch - 1; ++i) {
+        canvas::write(canvas, cx, cy + i, "\u2502", ctxBorder, ctxBg);
+        canvas::write(canvas, cx + cw - 1, cy + i, "\u2502", ctxBorder, ctxBg);
       }
+
       for (int i = 0; i < static_cast<int>(ctx_items_.size()); ++i) {
         auto fg = (i == ctx_sel_) ? ftxui::Color::White : ctxText;
         auto bg = (i == ctx_sel_) ? ftxui::Color::RGB(233, 69, 96) : ctxBg;
@@ -225,8 +244,8 @@ bool Desktop::OnEvent(ftxui::Event event) {
         int cw = 22;
         int ch = static_cast<int>(ctx_items_.size()) + 2;
         auto dim = ftxui::Terminal::Size();
-        int cx = std::min(ctx_x_, dim.dimx - cw - 1);
-        int cy = std::min(ctx_y_, dim.dimy - ch - 1);
+        int cx = (dim.dimx > cw + 1) ? std::min(ctx_x_, dim.dimx - cw - 1) : 0;
+        int cy = (dim.dimy > ch + 1) ? std::min(ctx_y_, dim.dimy - ch - 1) : 0;
         if (mouse.x >= cx && mouse.x < cx + cw && mouse.y >= cy && mouse.y < cy + ch) {
           int idx = mouse.y - cy - 1;
           if (idx >= 0 && idx < static_cast<int>(ctx_items_.size())) {

@@ -5,6 +5,17 @@
 #include <algorithm>
 #include <stdexcept>
 
+enum FieldIndex {
+  FIELD_BACKGROUND = 0,
+  FIELD_DOCK_HEIGHT = 1,
+  FIELD_DOCK_BG = 2,
+  FIELD_DOCK_TEXT = 3,
+  FIELD_WIN_WIDTH = 4,
+  FIELD_WIN_HEIGHT = 5,
+  FIELD_WIN_BORDER = 6,
+  FIELD_WIN_TITLE = 7
+};
+
 ConfigEditor::ConfigEditor(const Config& config, const std::string& configPath)
   : config_(config), config_path_(configPath) {
   setupFields();
@@ -20,6 +31,13 @@ void ConfigEditor::setupFields() {
   fields_.push_back({"Win Height", Field::IntVal, nullptr});
   fields_.push_back({"Win Border Color", Field::Color, &config_.windows.border_color});
   fields_.push_back({"Win Title Color", Field::Color, &config_.windows.title_color});
+}
+
+static std::string safeSubstr(const std::string& s, int maxLen) {
+  if (maxLen <= 0) return "";
+  if (static_cast<int>(s.size()) <= maxLen) return s;
+  if (maxLen > 3) return s.substr(0, static_cast<size_t>(maxLen - 3)) + "...";
+  return s.substr(0, static_cast<size_t>(maxLen));
 }
 
 void ConfigEditor::draw(ftxui::Canvas& canvas) {
@@ -47,9 +65,9 @@ void ConfigEditor::draw(ftxui::Canvas& canvas) {
 
     std::string display;
     if (field.type == Field::IntVal) {
-      if (i == 1) display = std::to_string(config_.dock.height);
-      else if (i == 4) display = std::to_string(config_.windows.default_width);
-      else if (i == 5) display = std::to_string(config_.windows.default_height);
+      if (i == FIELD_DOCK_HEIGHT) display = std::to_string(config_.dock.height);
+      else if (i == FIELD_WIN_WIDTH) display = std::to_string(config_.windows.default_width);
+      else if (i == FIELD_WIN_HEIGHT) display = std::to_string(config_.windows.default_height);
     } else if (field.value) {
       display = *field.value;
     }
@@ -60,9 +78,8 @@ void ConfigEditor::draw(ftxui::Canvas& canvas) {
     if (editing_ && isSel) {
       auto editBg = editingBg;
       canvas::write(canvas, x() + 2, line, label, labelColor, bg);
-      std::string val = edit_buffer_ + "_";
-      if (static_cast<int>(val.size()) > width() - 22)
-        val = val.substr(0, static_cast<size_t>(width() - 25)) + "...";
+      int valMax = std::max(1, width() - 22);
+      std::string val = safeSubstr(edit_buffer_, valMax - 1) + "_";
       canvas::write(canvas, x() + 20, line, val, textColor, editBg);
     } else if (isSel) {
       canvas::write(canvas, x() + 2, line, label, labelColor, bg);
@@ -85,8 +102,7 @@ void ConfigEditor::draw(ftxui::Canvas& canvas) {
       std::string entry = "  [" + std::to_string(i) + "] " + app.name;
       if (!app.command.empty()) entry += ": " + app.command;
       if (app.internal) entry += " (internal)";
-      if (static_cast<int>(entry.size()) > width() - 4)
-        entry = entry.substr(0, static_cast<size_t>(width() - 7)) + "...";
+      entry = safeSubstr(entry, width() - 4);
       int appSelIdx = fieldCount() + i;
       if (appSelIdx == selected_) {
         canvas::write(canvas, x() + 2, line, entry, ftxui::Color::White, selectedBg);
@@ -105,9 +121,12 @@ void ConfigEditor::draw(ftxui::Canvas& canvas) {
 
 void ConfigEditor::save() {
   ConfigLoader loader;
-  loader.save(config_path_, config_);
-  dirty_ = false;
-  saved_msg_ = "Saved!";
+  if (loader.save(config_path_, config_)) {
+    dirty_ = false;
+    saved_msg_ = "Saved!";
+  } else {
+    saved_msg_ = "Save failed!";
+  }
   saved_msg_timer_ = 30;
   if (onSaved) onSaved();
 }
@@ -118,9 +137,9 @@ void ConfigEditor::confirmEdit() {
     if (field.type == Field::IntVal) {
       int val = 1;
       try { val = std::stoi(edit_buffer_); } catch (const std::invalid_argument&) { } catch (const std::out_of_range&) { }
-      if (selected_ == 1) config_.dock.height = std::max(1, val);
-      else if (selected_ == 4) config_.windows.default_width = std::max(20, val);
-      else if (selected_ == 5) config_.windows.default_height = std::max(10, val);
+      if (selected_ == FIELD_DOCK_HEIGHT) config_.dock.height = std::max(1, val);
+      else if (selected_ == FIELD_WIN_WIDTH) config_.windows.default_width = std::max(20, val);
+      else if (selected_ == FIELD_WIN_HEIGHT) config_.windows.default_height = std::max(10, val);
     } else if (field.value) {
       *field.value = edit_buffer_;
     }
@@ -149,9 +168,9 @@ bool ConfigEditor::handleEvent(ftxui::Event event) {
         editing_ = true;
         auto& field = fields_[static_cast<size_t>(selected_)];
         if (field.type == Field::IntVal) {
-          if (selected_ == 1) edit_buffer_ = std::to_string(config_.dock.height);
-          else if (selected_ == 4) edit_buffer_ = std::to_string(config_.windows.default_width);
-          else if (selected_ == 5) edit_buffer_ = std::to_string(config_.windows.default_height);
+          if (selected_ == FIELD_DOCK_HEIGHT) edit_buffer_ = std::to_string(config_.dock.height);
+          else if (selected_ == FIELD_WIN_WIDTH) edit_buffer_ = std::to_string(config_.windows.default_width);
+          else if (selected_ == FIELD_WIN_HEIGHT) edit_buffer_ = std::to_string(config_.windows.default_height);
         } else if (field.value) {
           edit_buffer_ = *field.value;
         }

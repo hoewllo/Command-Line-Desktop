@@ -55,7 +55,8 @@ int StartMenu::hitTest(int mx, int my) const {
   if (my < menuY_ || my >= menuY_ + menuH_) return -1;
   int itemY = menuY_ + 3;
   int total = totalEntries();
-  for (int i = 0; i < total; ++i) {
+  int maxVis = std::min(22, menuH_ - 4);
+  for (int i = 0; i < total && i < maxVis; ++i) {
     if (my == itemY) return i;
     itemY++;
   }
@@ -78,36 +79,40 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
   auto selectedBg = ftxui::Color::RGB(233, 69, 96);
   auto specialColor = ftxui::Color::RGB(255, 200, 50);
 
-  canvas::fill(canvas, menuX_, menuY_, menuW_, menuH_, bg);
+  canvas::fill(canvas, menuX_ + 1, menuY_ + 1, menuW_ - 2, menuH_ - 2, bg);
 
-  for (int cx = menuX_; cx < menuX_ + menuW_; ++cx) {
+  canvas::write(canvas, menuX_, menuY_, "\u250c", borderColor, borderColor);
+  canvas::write(canvas, menuX_ + menuW_ - 1, menuY_, "\u2510", borderColor, borderColor);
+  canvas::write(canvas, menuX_, menuY_ + menuH_ - 1, "\u2514", borderColor, bg);
+  canvas::write(canvas, menuX_ + menuW_ - 1, menuY_ + menuH_ - 1, "\u2518", borderColor, bg);
+
+  for (int cx = menuX_ + 1; cx < menuX_ + menuW_ - 1; ++cx) {
     canvas::write(canvas, cx, menuY_, "\u2500", borderColor, borderColor);
-    canvas::write(canvas, cx, menuY_ + menuH_ - 1, "\u2500", borderColor, borderColor);
+    canvas::write(canvas, cx, menuY_ + menuH_ - 1, "\u2500", borderColor, bg);
   }
-  for (int cy = menuY_; cy < menuY_ + menuH_; ++cy) {
-    canvas::write(canvas, menuX_, cy, "\u2502", borderColor,
-      cy == menuY_ ? borderColor : bg);
-    canvas::write(canvas, menuX_ + menuW_ - 1, cy, "\u2502", borderColor,
-      cy == menuY_ ? borderColor : bg);
+  for (int cy = menuY_ + 1; cy < menuY_ + menuH_ - 1; ++cy) {
+    canvas::write(canvas, menuX_, cy, "\u2502", borderColor, bg);
+    canvas::write(canvas, menuX_ + menuW_ - 1, cy, "\u2502", borderColor, bg);
   }
 
   canvas::write(canvas, menuX_ + 2, menuY_ + 1, "Search: ", borderColor, bg);
   std::string displaySearch = search_;
   if (static_cast<int>(displaySearch.size()) > menuW_ - 12)
-    displaySearch = displaySearch.substr(0, static_cast<size_t>(menuW_ - 15)) + "...";
+    displaySearch = displaySearch.substr(0, static_cast<size_t>(std::max(0, menuW_ - 15))) + "...";
   canvas::write(canvas, menuX_ + 10, menuY_ + 1, displaySearch, textColor, bg);
 
   int itemY = menuY_ + 3;
   int visItems = maxItems;
-  int shown = 0;
+  int hintRow = menuY_ + menuH_ - 1;
 
-  if (filteredApps_.empty() && shown < visItems) {
+  if (filteredApps_.empty() && visItems > 0) {
     canvas::write(canvas, menuX_ + 2, itemY,
       "  (no results)", ftxui::Color::RGB(150, 150, 150), bg);
-    itemY++; shown++;
+    itemY++;
+    visItems--;
   }
 
-  for (int i = 0; i < static_cast<int>(filteredApps_.size()) && shown < visItems; ++i, ++shown) {
+  for (int i = 0; i < static_cast<int>(filteredApps_.size()) && visItems > 0; ++i, --visItems) {
     auto& app = filteredApps_[static_cast<size_t>(i)];
     auto fg = textColor;
     auto itemBg = bg;
@@ -117,38 +122,42 @@ void StartMenu::draw(ftxui::Canvas& canvas) {
     }
     std::string label = app.name;
     if (static_cast<int>(label.size()) > menuW_ - 4)
-      label = label.substr(0, static_cast<size_t>(menuW_ - 7)) + "...";
+      label = label.substr(0, static_cast<size_t>(std::max(0, menuW_ - 7))) + "...";
     canvas::write(canvas, menuX_ + 2, itemY, label, fg, itemBg);
     itemY++;
   }
 
-  if (shown < visItems && !filteredApps_.empty()) {
+  if (visItems > 1 && !filteredApps_.empty()) {
     for (int i = 0; i < menuW_ - 2; ++i)
       canvas::write(canvas, menuX_ + 1 + i, itemY, "\u2500",
         ftxui::Color::RGB(100, 100, 100), bg);
     itemY++;
-    shown++;
+    visItems--;
   }
 
-  if (shown < visItems) {
+  if (visItems > 1) {
     int editIdx = static_cast<int>(filteredApps_.size()) + ENTRY_EDIT_CONFIG;
     auto fg = (editIdx == selected_idx_) ? ftxui::Color::RGB(255, 255, 255) : specialColor;
     auto itemBg = (editIdx == selected_idx_) ? selectedBg : bg;
     canvas::write(canvas, menuX_ + 2, itemY, "Edit Config", fg, itemBg);
-    itemY++; shown++;
+    itemY++;
+    visItems--;
   }
 
-  if (shown < visItems) {
+  if (visItems > 1) {
     int exitIdx = static_cast<int>(filteredApps_.size()) + ENTRY_EXIT;
     auto fg = (exitIdx == selected_idx_) ? ftxui::Color::RGB(255, 255, 255) : specialColor;
     auto itemBg = (exitIdx == selected_idx_) ? selectedBg : bg;
     canvas::write(canvas, menuX_ + 2, itemY, "Exit", fg, itemBg);
-    itemY++; shown++;
+    itemY++;
+    visItems--;
   }
 
-  canvas::write(canvas, menuX_ + 2, menuY_ + menuH_ - 1,
-    "Type to search | Enter to launch",
-    ftxui::Color::RGB(150, 150, 150), bg);
+  if (itemY <= hintRow) {
+    canvas::write(canvas, menuX_ + 2, hintRow,
+      "Type to search | Enter to launch",
+      ftxui::Color::RGB(150, 150, 150), bg);
+  }
 }
 
 bool StartMenu::handleEvent(ftxui::Event event) {
@@ -172,6 +181,7 @@ bool StartMenu::handleEvent(ftxui::Event event) {
 
   if (event == ftxui::Event::Return) {
     open_ = false;
+    search_ = "";
     int appCount = static_cast<int>(filteredApps_.size());
     if (selected_idx_ < appCount) {
       if (onLaunch) onLaunch();
@@ -200,6 +210,7 @@ bool StartMenu::handleEvent(ftxui::Event event) {
       if (hit >= 0) {
         selected_idx_ = hit;
         open_ = false;
+        search_ = "";
         int appCount = static_cast<int>(filteredApps_.size());
         if (hit < appCount) {
           if (onLaunch) onLaunch();

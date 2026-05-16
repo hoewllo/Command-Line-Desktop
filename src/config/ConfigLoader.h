@@ -31,5 +31,5 @@ struct Config {
 class ConfigLoader {
 public:
   Config load(const std::string& path);
-  void save(const std::string& path, const Config& config);
+  bool save(const std::string& path, const Config& config);
 };

@@ -2,6 +2,7 @@
 #include "core/Component.h"
 #include <vector>
 #include <memory>
+#include <functional>
 
 class WindowFrame;
 
@@ -22,6 +23,8 @@ public:
   WindowFrame* focusedWindow() const;
   std::vector<WindowFrame*> windows() const;
 
+  std::function<void()> onWindowClosed;
+
   int windowCount() const { return static_cast<int>(windows_.size()); }
 
 private:
@@ -38,6 +41,4 @@ private:
   void handleResize(ftxui::Event event);
 
   static constexpr int resize_margin_ = 3;
-  static constexpr int close_btn_w_ = 4;
-  static constexpr int minimize_btn_w_ = 3;
 };

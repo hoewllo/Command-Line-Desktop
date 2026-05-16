@@ -6,10 +6,10 @@
 #include <cstdio>
 
 static void printHelp(const char* argv0) {
-  fprintf(stderr, "Usage: %s [options]\n", argv0);
-  fprintf(stderr, "\nOptions:\n");
-  fprintf(stderr, "  --config FILE   Path to config file (default: config.yaml)\n");
-  fprintf(stderr, "  --help          Show this help\n");
+  std::fprintf(stderr, "Usage: %s [options]\n", argv0);
+  std::fprintf(stderr, "\nOptions:\n");
+  std::fprintf(stderr, "  --config FILE   Path to config file (default: config.yaml)\n");
+  std::fprintf(stderr, "  --help          Show this help\n");
 }
 
 int main(int argc, char* argv[]) {
@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
     } else if (arg == "--config" && i + 1 < argc) {
       configPath = argv[++i];
     } else {
-      fprintf(stderr, "Unknown option: %s\n", arg.c_str());
+      std::fprintf(stderr, "Unknown option: %s\n", arg.c_str());
       printHelp(argv[0]);
       return 1;
     }

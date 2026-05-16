@@ -15,7 +15,7 @@ public:
   void setApps(const std::vector<AppConfig>& apps) { apps_ = apps; }
   void toggle() { open_ = !open_; }
   void open() { open_ = true; }
-  void close() { open_ = false; }
+  void close() { open_ = false; search_.clear(); }
   bool isOpen() const { return open_; }
 
   std::string selectedCommand() const;

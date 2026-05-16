@@ -14,9 +14,9 @@ void WindowFrame::setPos(int x, int y, int w, int h) {
   Component::setPos(x, y, w, h);
   if (content_) {
     int contentX = x + 1;
-    int contentY = y + titlebar_height_ + 1;
-    int contentW = w - 3;
-    int contentH = h - titlebar_height_ - 2;
+    int contentY = y + titlebar_height_;
+    int contentW = std::max(1, w - 2);
+    int contentH = std::max(1, h - titlebar_height_ - 1);
     content_->setPos(contentX, contentY, contentW, contentH);
   }
 }
@@ -66,8 +66,13 @@ void WindowFrame::draw(ftxui::Canvas& canvas) {
   canvas::write(canvas, x() + width() - 1, y() + height() - 1, "\u2518", borderColor_, bg);
 
   auto titleText = title();
-  if (static_cast<int>(titleText.size()) > width() - 6)
-    titleText = titleText.substr(0, static_cast<size_t>(width() - 9)) + "...";
+  int availTitleChars = std::max(0, width() - 11);
+  if (static_cast<int>(titleText.size()) > availTitleChars) {
+    if (availTitleChars > 3)
+      titleText = titleText.substr(0, static_cast<size_t>(availTitleChars - 3)) + "...";
+    else
+      titleText = "";
+  }
   canvas::write(canvas, x() + 2, y(), " " + titleText + " ", titleFg, titleColor_);
 
   if (closable_) {
